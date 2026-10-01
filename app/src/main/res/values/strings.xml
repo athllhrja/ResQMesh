@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ResQMesh</string>
+
+    <string name="nav_nodes">Nearby Nodes</string>
+    <string name="nav_history">Messages</string>
+
+    <string name="home_node">Node</string>
+    <string name="home_status">Status</string>
+    <string name="home_neighbors">Nearby nodes</string>
+    <string name="home_pending">Pending forward</string>
+    <string name="home_unknown">Unknown</string>
+    <string name="home_sos">SOS</string>
+    <string name="home_sos_cancel">BATAL</string>
+    <string name="home_ttl_label">TTL</string>
+    <string name="home_active">Aktif</string>
+    <string name="home_idle">Idle</string>
+    <string name="home_scanning">Memindai</string>
+    <string name="home_error">Gangguan</string>
+    <string name="home_stopped">Berhenti</string>
+
+    <string name="nodes_empty">Belum ada node lain di sekitar.</string>
+    <string name="nodes_signal">Sinyal: %1$s</string>
+    <string name="nodes_connected">Terhubung</string>
+    <string name="nodes_available">Tersedia</string>
+    <string name="nodes_offline">Luring</string>
+
+    <string name="chat_input_hint">Tulis pesan…</string>
+    <string name="chat_send">KIRIM</string>
+    <string name="chat_empty">Belum ada pesan dengan node ini.</string>
+
+    <string name="history_empty">Belum ada pesan.</string>
+
+    <string name="status_delivered">Terkirim</string>
+    <string name="status_pending">Menunggu</string>
+    <string name="status_transit">Dalam perjalanan</string>
+    <string name="status_expired">Kedaluwarsa</string>
+    <string name="status_failed">Gagal</string>
+    <string name="status_awaiting">Menyusun fragmen</string>
+    <string name="status_hops">%1$d hop</string>
+
+    <string name="action_back">Kembali</string>
+
+    <!-- Penyusun SOS -->
+    <string name="sos_composer_title">KIRIM DARURAT</string>
+    <string name="sos_kind_label">Jenis</string>
+    <string name="sos_victims_label">Jumlah korban</string>
+    <string name="sos_victims_only_self">saya saja</string>
+    <string name="sos_hazard_label">Kondisi korban</string>
+    <string name="sos_detail_label">Keterangan (opsional)</string>
+    <string name="sos_detail_hint">Misalnya: kaki tersangkut di pagar, butuh dua orang</string>
+    <string name="sos_send_now">KIRIM</string>
+
+    <!-- Status lokasi di dialog SOS -->
+    <string name="sos_location_ready">Lokasi terkunci, koordinat akan dikirim.</string>
+    <string name="sos_location_missing">Tanpa koordinat.</string>
+    <string name="sos_location_accuracy">Akurasi ±%1$d m · fix %2$d detik lalu</string>
+    <string name="sos_location_note_permission">Izin lokasi belum diberikan. Darurat tetap terkirim tanpa pin.</string>
+    <string name="sos_location_note_provider">GPS dimatikan. Nyalakan di pengaturan lalu coba lagi.</string>
+    <string name="sos_location_note_stale">Belum ada lokasi yang cukup segar. Tunggu sebentar di bawah langit terbuka.</string>
+    <string name="sos_location_retry">Coba lagi</string>
+
+    <!-- Kartu insiden -->
+    <string name="sos_card_victims">%1$d orang</string>
+    <string name="sos_card_victims_self">Pengirim saja</string>
+    <string name="sos_card_open_map">Buka peta</string>
+    <string name="sos_card_waiting_location">Menunggu koordinat…</string>
+    <string name="sos_card_detail_pending">Keterangan menyusul…</string>
+    <string name="sos_alerts_title">Darurat</string>
+    <string name="sos_alerts_empty">Belum ada darurat diterima.</string>
+    <string name="sos_no_map_app">Tidak ada aplikasi peta di perangkat ini.</string>
+</resources>

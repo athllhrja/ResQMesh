@@ -1,0 +1,35 @@
+# Android Studio / IntelliJ
+*.iml
+.idea/
+.gradle/
+**/build/
+out/
+
+# Local machine configuration
+local.properties
+secrets.properties
+secrets.xml
+
+# Environment files: keep examples, ignore real local values
+.env
+.env.*
+!.env.example
+
+# Signing credentials and key material
+*.jks
+*.keystore
+*.p12
+*.pfx
+
+# Android generated / native build output
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Crash dumps and OS/editor temporary files
+*.hprof
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+*.swo

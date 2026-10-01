@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 1254)
-Total output lines: 79
-
 # ResQMesh
 
 Prototype aplikasi Android untuk menyebarkan SOS berisi lokasi dan informasi keadaan melalui perangkat sekitar, dengan tujuan mendukung komunikasi saat internet atau jaringan seluler tidak tersedia.
@@ -41,7 +38,7 @@ Ponsel korban → ponsel relay → ponsel responder
 
 Setiap relay mempertahankan identitas sumber dan `message_id` SOS. Relay memvalidasi dan menyimpan pesan, lalu meneruskannya jika aturan duplikasi dan TTL mengizinkan.
 
-SOS dapat berisi jenis keadaan darur…54 tokens truncated…
+SOS dapat berisi jenis keadaan darurat, lokasi saat SOS dibuat, jumlah orang, catatan singkat, dan waktu. Lokasi merupakan snapshot, bukan pelacakan langsung. Jika lokasi tidak tersedia, rancangan produk mengizinkan SOS tetap dikirim tanpa koordinat.
 
 ## Tujuan dan batasan prototype
 
@@ -79,4 +76,3 @@ Cisco Packet Tracer dapat dipakai sebagai simulasi pendukung untuk topologi, jal
 - [`ResQMesh_PRD_v2.md`](ResQMesh_PRD_v2.md) — acuan kebutuhan produk saat ini.
 - [`ResQMesh_PRD.md`](ResQMesh_PRD.md) — PRD versi awal.
 - [`ResQMesh_Technical_Specification.md`](ResQMesh_Technical_Specification.md) — spesifikasi teknis draft, termasuk keputusan desain, status implementasi, dan gap yang masih terbuka.
-
