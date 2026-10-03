@@ -16,7 +16,7 @@ import kotlinx.coroutines.flow.flowOf
 class InMemoryNodeDao : NodeDao {
     val rows = linkedMapOf<Long, NodeEntity>()
 
-    override suspend fun upsert(node: NodeEntity) {
+    override suspend fun upsert(node: NodeEntity): Long {
         rows[node.nodeId] = rows[node.nodeId]?.copy(
             displayName = node.displayName,
             statusFlags = node.statusFlags,
@@ -30,6 +30,7 @@ class InMemoryNodeDao : NodeDao {
             firstSeenAt = node.firstSeenAt,
             lastSeenAt = node.lastSeenAt,
         ) ?: node
+        return node.nodeId
     }
 
     override suspend fun self(): NodeEntity? = rows.values.firstOrNull { it.isSelf }
@@ -40,8 +41,10 @@ class InMemoryNodeDao : NodeDao {
 
     override suspend fun find(id: Long): NodeEntity? = rows[id]
 
-    override suspend fun touchRssi(id: Long, rssi: Int, now: Long) {
-        rows[id]?.let { rows[id] = it.copy(rssi = rssi, lastSeenAt = now) }
+    override suspend fun touchRssi(id: Long, rssi: Int, now: Long): Int {
+        val existing = rows[id] ?: return 0
+        rows[id] = existing.copy(rssi = rssi, lastSeenAt = now)
+        return 1
     }
 
     override suspend fun applyBeacon(
@@ -52,17 +55,17 @@ class InMemoryNodeDao : NodeDao {
         peers: Int,
         ttl: Int,
         seq: Long,
-    ) {
-        rows[id]?.let {
-            rows[id] = it.copy(
-                statusFlags = flags,
-                batteryPct = battery,
-                pendingCount = pending,
-                gattPeerCount = peers,
-                defaultTtl = ttl,
-                nodeSeq = seq,
-            )
-        }
+    ): Int {
+        val existing = rows[id] ?: return 0
+        rows[id] = existing.copy(
+            statusFlags = flags,
+            batteryPct = battery,
+            pendingCount = pending,
+            gattPeerCount = peers,
+            defaultTtl = ttl,
+            nodeSeq = seq,
+        )
+        return 1
     }
 
     override suspend fun pruneStale(cutoff: Long): Int {
@@ -82,7 +85,7 @@ class InMemoryNodeDao : NodeDao {
 class InMemoryMessageDao : MessageDao {
     val rows = linkedMapOf<Long, MessageEntity>()
 
-    override suspend fun upsert(message: MessageEntity) {
+    override suspend fun upsert(message: MessageEntity): Long {
         val existing = rows[message.messageKey]
         rows[message.messageKey] = if (existing == null) {
             message
@@ -94,6 +97,7 @@ class InMemoryMessageDao : MessageDao {
                 firstForwardAt = existing.firstForwardAt ?: message.firstForwardAt,
             )
         }
+        return message.messageKey
     }
 
     override suspend fun findByKey(key: Long): MessageEntity? = rows[key]
@@ -112,15 +116,15 @@ class InMemoryMessageDao : MessageDao {
     override suspend fun countPendingForwards(): Int =
         rows.values.count { it.status == "PENDING_FORWARD" }
 
-    override suspend fun markForwarded(key: Long, status: String, ttl: Int, hopCount: Int, now: Long) {
-        rows[key]?.let {
-            rows[key] = it.copy(
-                status = status,
-                ttl = ttl,
-                hopCount = hopCount,
-                firstForwardAt = it.firstForwardAt ?: now,
-            )
-        }
+    override suspend fun markForwarded(key: Long, status: String, ttl: Int, hopCount: Int, now: Long): Int {
+        val existing = rows[key] ?: return 0
+        rows[key] = existing.copy(
+            status = status,
+            ttl = ttl,
+            hopCount = hopCount,
+            firstForwardAt = existing.firstForwardAt ?: now,
+        )
+        return 1
     }
 
     override suspend fun markDelivered(key: Long, now: Long): Int {
@@ -195,12 +199,16 @@ class InMemorySeenMessageDao : SeenMessageDao {
 
     override suspend fun find(key: Long): SeenMessageEntity? = rows[key]
 
-    override suspend fun lowerHopIfBetter(key: Long, hop: Int) {
-        rows[key]?.let { rows[key] = it.copy(hopCount = minOf(it.hopCount, hop)) }
+    override suspend fun lowerHopIfBetter(key: Long, hop: Int): Int {
+        val existing = rows[key] ?: return 0
+        rows[key] = existing.copy(hopCount = minOf(existing.hopCount, hop))
+        return 1
     }
 
-    override suspend fun incrementForwardCount(key: Long) {
-        rows[key]?.let { rows[key] = it.copy(forwardCount = it.forwardCount + 1) }
+    override suspend fun incrementForwardCount(key: Long): Int {
+        val existing = rows[key] ?: return 0
+        rows[key] = existing.copy(forwardCount = existing.forwardCount + 1)
+        return 1
     }
 
     override suspend fun purgeExpired(now: Long): Int {

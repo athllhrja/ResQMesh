@@ -2,7 +2,7 @@
 
 **Versi:** 2.0
 **Status:** Draft implementasi - keputusan bertanda RANCANGAN belum final
-**Sumber:** [PRD v2.0](ResQMesh_PRD_v2.md) — acuan produk resmi. `ResQMesh_PRD.md` adalah PRD v1 yang sudah digantikan dan hanya disimpan sebagai riwayat.
+**Sumber:** [PRD v3.0](ResQMesh_PRD_v3.md) — acuan spesifikasi target pengujian fisik (*field-ready baseline*). `ResQMesh_PRD_v2.md` dan `ResQMesh_PRD.md` adalah dokumen historis sebelumnya.
 **Platform:** Android (minSdk 26 / targetSdk 34)
 **Bahasa:** Kotlin, Jetpack Compose, BLE, Room
 

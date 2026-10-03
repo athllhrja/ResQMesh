@@ -6,10 +6,11 @@ import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
 
 @Dao
+@JvmSuppressWildcards
 interface MessageDao {
 
     @Upsert
-    suspend fun upsert(message: MessageEntity)
+    suspend fun upsert(message: MessageEntity): Long
 
     @Query("SELECT * FROM MessageEntity WHERE messageKey = :key LIMIT 1")
     suspend fun findByKey(key: Long): MessageEntity?
@@ -47,7 +48,7 @@ interface MessageDao {
             firstForwardAt = COALESCE(firstForwardAt, :now)
         WHERE messageKey = :key
     """)
-    suspend fun markForwarded(key: Long, status: String, ttl: Int, hopCount: Int, now: Long)
+    suspend fun markForwarded(key: Long, status: String, ttl: Int, hopCount: Int, now: Long): Int
 
     @Query("""
         UPDATE MessageEntity

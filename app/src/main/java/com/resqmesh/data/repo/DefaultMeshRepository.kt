@@ -45,6 +45,12 @@ class DefaultMeshRepository(
     override fun observeSosIncidents(limit: Int): Flow<List<SosIncident>> =
         messageDao.observeSosRows(limit).map { rows -> rows.toSosIncidents() }
 
+    override fun observeSelfSosIncidents(limit: Int): Flow<List<SosIncident>> =
+        observeSosIncidents(limit).map { list -> list.filter { it.isOutgoing } }
+
+    override fun observePeerSosIncidents(limit: Int): Flow<List<SosIncident>> =
+        observeSosIncidents(limit).map { list -> list.filter { !it.isOutgoing } }
+
     override fun observeMeshState(): Flow<MeshState> = manager.state
 
     override fun observePendingForwardCount(): Flow<Int> = messageDao.observePendingForwardCount()

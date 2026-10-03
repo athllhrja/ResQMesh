@@ -1,32 +1,56 @@
-# Android Studio / IntelliJ
-*.iml
-.idea/
-.gradle/
-**/build/
-out/
+# Built application files
+*.apk
+*.aar
+*.ap_
+*.aab
 
-# Local machine configuration
+# Files for the ART/DALVIK VM
+*.dex
+
+# Java class files
+*.class
+
+# Generated outputs & build directories
+bin/
+gen/
+out/
+build/
+**/build/
+
+# Gradle cache and files
+.gradle/
+
+# Local configuration files
 local.properties
 secrets.properties
 secrets.xml
 
-# Environment files: keep examples, ignore real local values
+# Environment files
 .env
 .env.*
 !.env.example
 
-# Signing credentials and key material
+# Android Studio / IntelliJ project files
+.idea/
+*.iml
+*.iws
+*.ipr
+*.probes
+
+# Android Studio captures & native build
+captures/
+.externalNativeBuild/
+.cxx/
+.spotless/
+
+# Signing credentials
 *.jks
 *.keystore
 *.p12
 *.pfx
 
-# Android generated / native build output
-captures/
-.externalNativeBuild/
-.cxx/
-
-# Crash dumps and OS/editor temporary files
+# Logs, crash dumps & OS / Editor temp files
+*.log
 *.hprof
 .DS_Store
 Thumbs.db

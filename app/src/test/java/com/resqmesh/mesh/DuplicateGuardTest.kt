@@ -54,7 +54,7 @@ class DuplicateGuardTest {
     }
 
     @Test
-    fun `jalur_lebih_pendek_tetap_diteruskan_sampai_batas_kuat()` = runTest {
+    fun jalur_lebih_pendek_tetap_diteruskan_sampai_batas_kuat() = runTest {
         guard.trackMessage(id, hop = 3)
         guard.noteForward(id, hop = 3)
         assertEquals(false, guard.shouldSuppress(id, incomingHop = 1))

@@ -120,7 +120,7 @@ class SosRelayTest {
         frames.forEach { engine.onFrame(it, peer = Peer.ADVERTISING, rssi = -55) }
     }
 
-    private fun incidents() = messages.rows.values.toSosIncidents()
+    private fun incidents() = messages.rows.values.toList().toSosIncidents()
 
     @Test
     fun `koordinat tersimpan sebagai kolom bukan teks`() = runTest {
@@ -134,7 +134,7 @@ class SosRelayTest {
         assertEquals(SosHazard.BLEEDING, row?.hazards)
         assertTrue(row?.isSosLoc == true)
         // Baris LOC tetap punya teks ringkas agar gelembung di riwayat tidak kosong.
-        assertTrue(row?.payload?.contains("106.82715") == true)
+        assertTrue(row?.payload?.contains("106.8271") == true)
     }
 
     @Test

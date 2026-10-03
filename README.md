@@ -1,78 +1,61 @@
-# ResQMesh
+# ResQMesh: Protokol Routing Mesh P2P Berbasis BLE untuk Komunikasi Darurat Tanpa Internet
 
-Prototype aplikasi Android untuk menyebarkan SOS berisi lokasi dan informasi keadaan melalui perangkat sekitar, dengan tujuan mendukung komunikasi saat internet atau jaringan seluler tidak tersedia.
+Proyek penelitian rekayasa perangkat lunak dan jaringan komunikasi darurat (*Delay-Tolerant Mobile Ad-Hoc Network / DTN-MANET*) untuk menyebarkan sinyal darurat (SOS) berisi koordinat lokasi dan informasi keadaan secara *device-to-device* (*peer-to-peer*) melalui perangkat seluler di sekitar tanpa memerlukan infrastruktur seluler atau internet.
 
-## Status implementasi sekarang
+---
 
-- Aplikasi Android menggunakan Kotlin, Jetpack Compose, dan Room.
-- Fondasi model SOS, encoding paket, penyimpanan lokal, logika relay, TTL, deteksi duplikasi, fragmentasi, dan ACK sudah ada di source.
-- Aplikasi **belum dapat mengirim SOS antarponsel melalui BLE**. `AppGraph` saat ini menggunakan `NoOpMeshTransport`, transport kosong untuk pengembangan dan pengujian logika tanpa perangkat.
-- Gradle Wrapper 8.7 disertakan untuk menjalankan build dengan versi yang sesuai dengan Android Gradle Plugin 8.5.2 proyek.
-- Karena itu, status jaringan atau paket yang muncul di UI belum membuktikan komunikasi perangkat sungguhan.
+## 1. Status Implementasi & Kesiapan Eksperimen Lapangan (Field-Ready Baseline)
 
-## Kebutuhan untuk membuka proyek
+- **Platform & Teknologi:** Android (Kotlin, Jetpack Compose, Room Database, Android BLE API / `BluetoothLeScanner` & `BluetoothLeAdvertiser`).
+- **Penyelesaian Logika Protokol (F1 – F12):** Seluruh fitur inti (Alokasi Node ID 24-bit, Device Discovery BLE, Pengambilan Snapshot Lokasi, Pembuatan SOS Dua-Rantai, Multi-Hop Relay, Duplicate Detection, TTL Enforcement, Hop Count Tracking, Lifecycle Status, ACK Propagation, Local History, dan Store-and-Forward Buffer) telah selesai diimplementasikan dan diverifikasi melalui **85+ unit test pengujian otomatis JVM**.
+- **Integrasi Transport Hardware Native:** Lapisan transport telah terhubung secara penuh ke driver perangkat keras native melalui `BleMeshTransport` (Company ID `0xE000`, struktur payload biner 27-byte), menggantikan `NoOpMeshTransport` demi beralih dari fase simulasi in-memory menuju fase eksperimen validasi perangkat fisik (*field testing*).
 
-- Android Studio dengan dukungan proyek Android/Kotlin.
-- JDK 17 untuk konfigurasi Java/Kotlin proyek.
-- Android SDK Platform 34 dan Android SDK Build-Tools.
-- Untuk pengujian komunikasi di masa mendatang: minimal dua ponsel Android dengan BLE; pengujian multi-hop memerlukan setidaknya tiga ponsel.
+---
 
-## Cara menjalankan
+## 2. Metrik Evaluasi Penelitian (KTI Metrics)
 
-1. Pasang kebutuhan di atas dan buka folder proyek ini di Android Studio.
-2. Jalankan Gradle Sync di Android Studio.
-3. Untuk membangun APK debug dari Windows, jalankan `.\gradlew.bat :app:assembleDebug` dari folder proyek. APK keluaran berada di `app/build/outputs/apk/debug/`.
-4. Untuk menjalankan tes unit JVM, jalankan `.\gradlew.bat :app:testDebugUnitTest`.
-5. Setelah build berhasil, pilih konfigurasi `app` dan perangkat Android atau emulator di Android Studio, lalu tekan **Run**.
-6. Untuk uji BLE antarponsel, implementasikan transport BLE sungguhan terlebih dahulu dan hubungkan ke `AppGraph`; transport saat ini masih `NoOpMeshTransport`.
+Dalam rangka pengujian prototipe untuk Karya Tulis Ilmiah (KTI), variabel unjuk kerja (*performance evaluation metrics*) utama yang diamati meliputi:
 
-Build dan tes belum diverifikasi pada checkout ini.
+1. **Packet Delivery Ratio (PDR):** Rasio keberhasilan paket SOS diterima oleh node responder atau perantara terhadap total paket yang disiarkan dalam berbagai skenario topologi.
+2. **End-to-End Latency:** Waktu tunda total (*delay*) sejak tombol SOS ditekan di perangkat asal (*origin*) hingga paket darurat diterima dan dikonfirmasi (*DELIVERED*) melalui ACK oleh responder.
+3. **Hop Count Verification:** Keakuratan inkremental hop (*F8*) dalam mencerminkan jarak topologi jaringan multi-hop secara riil.
+4. **Location Integrity:** Keutuhan dan presisi data koordinat (*snapshot latitude, longitude, accuracy*) selama proses estafet data melintasi simpul perantara (*F3* & *F5*).
+5. **Resilience & Fault Tolerance:** Ketahanan jaringan (*resilience*) terhadap kegagalan node (*node failure*) atau pergerakan node di luar jangkauan menggunakan mekanisme *Store-and-Forward* (*F12*).
 
-## Konsep produk
+---
 
-ResQMesh mengeksplorasi pengiriman informasi darurat dari satu ponsel ke ponsel lain. Perangkat perantara dapat meneruskan SOS yang sama sampai mencapai responder atau gateway.
+## 3. Konsep Arsitektur & Metodologi
+
+ResQMesh dirancang dengan pendekatan *Application-Layer Flooding Protocol* dengan optimasi anggaran payload iklan BLE (*Bluetooth Low Energy Advertising*) yang sangat ketat (maksimal 27 byte payload biner per frame):
 
 ```text
-Ponsel korban → ponsel relay → ponsel responder
+Ponsel Korban (Origin) → Simpul Perantara (Relay Node) → Simpul Responder (Gateway/Responder)
 ```
 
-Setiap relay mempertahankan identitas sumber dan `message_id` SOS. Relay memvalidasi dan menyimpan pesan, lalu meneruskannya jika aturan duplikasi dan TTL mengizinkan.
+- **Struktur Paket Dua-Rantai (*Two-Tier SOS Chain*):** Mengatasi batasan ukuran paket BLE dengan memecah informasi darurat menjadi dua pesan berantai (`SOS_LOC` 16-byte untuk koordinat kilat dan `SOS_DETAIL` 7-byte header + teks catatan darurat).
+- **Manajemen Router & Relay:** Setiap simpul perantara mempertahankan identitas sumber (*origin sender*) dan `message_id` asli, menerapkan dekrementasi TTL (*F7*), inkrementasi hop (*F8*), serta pencegahan duplikasi atomik (*F6*).
 
-SOS dapat berisi jenis keadaan darurat, lokasi saat SOS dibuat, jumlah orang, catatan singkat, dan waktu. Lokasi merupakan snapshot, bukan pelacakan langsung. Jika lokasi tidak tersedia, rancangan produk mengizinkan SOS tetap dikirim tanpa koordinat.
+---
 
-## Tujuan dan batasan prototype
+## 4. Panduan Menjalankan & Pengujian
 
-Tujuan prototype adalah menguji apakah perangkat Android dapat menyebarkan SOS secara device-to-device tanpa internet, termasuk melalui beberapa relay.
+1. **Prasyarat Sistem:**
+   - Android Studio (Electric Eel / Iguana atau versi terbaru).
+   - JDK 17.
+   - Android SDK Platform 34 (minimum SDK 26 / Android 8.0).
+   - Minimal 2 hingga 3 perangkat fisik Android dengan dukungan Bluetooth Low Energy (BLE) untuk pengujian multi-hop.
+2. **Sinkronisasi & Build:**
+   - Buka direktori proyek di Android Studio dan lakukan *Gradle Sync*.
+   - Jalankan perintah build APK Debug melalui terminal/Gradle: `.\gradlew.bat :app:assembleDebug`.
+3. **Pengujian Unit & Simulasi:**
+   - Jalankan rangkaian unit test otomatis JVM: `.\gradlew.bat :app:testDebugUnitTest`.
 
-ResQMesh bukan pengganti jaringan seluler, sistem komunikasi SAR profesional, atau konfirmasi bahwa bantuan fisik telah dikirim. ACK hanya menandakan paket diterima oleh perangkat responder yang ditentukan. Keberhasilan komunikasi dapat dipengaruhi oleh Bluetooth, izin Android, jarak, kondisi perangkat, dan apakah aplikasi sedang berjalan.
+---
 
-Di luar cakupan MVP: panggilan suara/video, transfer berkas besar, internet/cloud, live location tracking, serta jaringan skala besar.
+## 5. Dokumentasi Referensi Penelitian
 
-## Teknologi dan struktur
-
-- **Platform dan bahasa:** Android, Kotlin.
-- **UI:** Jetpack Compose.
-- **Penyimpanan:** Room Database.
-- **Lokasi:** Android Location Services.
-- **Transport yang direncanakan:** BLE device-to-device; implementasi aktual belum tersedia.
-- **Arsitektur source:** lapisan UI, domain, data, dan logika mesh berada di modul `app`.
-
-## Rencana pengujian
-
-Lakukan pengujian bertahap setelah transport BLE tersedia:
-
-1. **Dua ponsel, pengiriman langsung:** A mengirim SOS ke B tanpa internet.
-2. **Tiga ponsel, relay:** A mengirim melalui B ke C.
-3. **Aturan relay:** verifikasi identitas dan isi SOS tetap, paket duplikat tidak membuat insiden baru, TTL membatasi penerusan, dan hop count tercatat benar.
-4. **Responder dan ACK:** verifikasi penerimaan responder dan status ACK jika jalur balik tersedia.
-5. **Kondisi gagal:** Bluetooth mati, izin ditolak, lokasi tidak tersedia, perangkat di luar jangkauan, dan relay tidak aktif.
-
-Untuk setiap percobaan, catat topologi, kondisi koneksi, keberhasilan penerimaan, kecocokan isi/lokasi, latency, hop count, ACK, duplikasi, dan error.
-
-Cisco Packet Tracer dapat dipakai sebagai simulasi pendukung untuk topologi, jalur alternatif, dan kegagalan link/node. Packet Tracer tidak menguji aplikasi Android, BLE, lokasi, atau implementasi relay ResQMesh; hasil simulasi harus dipisahkan dari hasil pengujian ponsel nyata.
-
-## Dokumentasi
-
-- [`ResQMesh_PRD_v2.md`](ResQMesh_PRD_v2.md) — acuan kebutuhan produk saat ini.
-- [`ResQMesh_PRD.md`](ResQMesh_PRD.md) — PRD versi awal.
-- [`ResQMesh_Technical_Specification.md`](ResQMesh_Technical_Specification.md) — spesifikasi teknis draft, termasuk keputusan desain, status implementasi, dan gap yang masih terbuka.
+Spesifikasi teknis, rincian protokol biner, dan pemetaan kebutuhan dikelola secara ketat melalui dokumen acuan resmi:
+- [`ResQMesh_PRD_v3.md`](ResQMesh_PRD_v3.md) — Acuan spesifikasi target pengujian fisik (*field-ready baseline*).
+- [`ResQMesh_PRD_v2.md`](ResQMesh_PRD_v2.md) — Dokumen transisi kebutuhan produk.
+- [`ResQMesh_PRD.md`](ResQMesh_PRD.md) — Spesifikasi PRD versi awal (*historis*).
+- [`ResQMesh_Technical_Specification.md`](ResQMesh_Technical_Specification.md) — Spesifikasi arsitektur teknis mendalam dan pemetaan desain biner.

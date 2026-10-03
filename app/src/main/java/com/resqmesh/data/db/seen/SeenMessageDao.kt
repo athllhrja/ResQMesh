@@ -6,6 +6,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 
 @Dao
+@JvmSuppressWildcards
 interface SeenMessageDao {
 
     /** Mengembalikan -1 bila baris sudah ada, yaitu pesan ini duplikat. */
@@ -16,10 +17,10 @@ interface SeenMessageDao {
     suspend fun find(key: Long): SeenMessageEntity?
 
     @Query("UPDATE SeenMessageEntity SET hopCount = MIN(hopCount, :hop) WHERE messageKey = :key")
-    suspend fun lowerHopIfBetter(key: Long, hop: Int)
+    suspend fun lowerHopIfBetter(key: Long, hop: Int): Int
 
     @Query("UPDATE SeenMessageEntity SET forwardCount = forwardCount + 1 WHERE messageKey = :key")
-    suspend fun incrementForwardCount(key: Long)
+    suspend fun incrementForwardCount(key: Long): Int
 
     @Query("DELETE FROM SeenMessageEntity WHERE expiresAt < :now")
     suspend fun purgeExpired(now: Long): Int

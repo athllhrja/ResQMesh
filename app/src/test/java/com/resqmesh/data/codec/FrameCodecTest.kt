@@ -47,7 +47,7 @@ class FrameCodecTest {
     }
 
     @Test
-    fun `roundtrip_pesan_menjaga_semua_field()` {
+    fun roundtrip_pesan_menjaga_semua_field() {
         val original = sampleFrame()
         val decoded = codec.decode(codec.encodeMessage(original))
         assertEquals(original, decoded)
@@ -62,7 +62,7 @@ class FrameCodecTest {
     }
 
     @Test
-    fun `frame_beacon_selalu_27_byte_dan_roundtrip_jaga_field()` {
+    fun frame_beacon_selalu_27_byte_dan_roundtrip_jaga_field() {
         val beacon = BeaconFrame(
             nodeId = NodeId(0xB19C77),
             statusFlags = 0x03,
@@ -89,7 +89,7 @@ class FrameCodecTest {
             nodeSeq = 1L,
         )
         // Byte 0 = versi, byte 1 = tipe, byte 2-4 = nodeId, byte 5 = status, byte 6 = baterai.
-        assertEquals(FrameCodec.BATTERY_UNKNOWN, codec.encodeBeacon(beacon)[6].toInt())
+        assertEquals(FrameCodec.BATTERY_UNKNOWN, codec.encodeBeacon(beacon)[6].toUByte().toInt())
         assertEquals(-1, codec.decodeBeacon(codec.encodeBeacon(beacon)).batteryPct)
     }
 
@@ -101,7 +101,7 @@ class FrameCodecTest {
     }
 
     @Test
-    fun `versi_tidak_didukung_ditolak()` {
+    fun versi_tidak_didukung_ditolak() {
         val bytes = codec.encodeMessage(sampleFrame()).also { it[0] = 0x09 }
         var ditolak = false
         runCatching { codec.decode(bytes) }.onFailure { ditolak = true }
@@ -109,7 +109,7 @@ class FrameCodecTest {
     }
 
     @Test
-    fun `frame_terpotong_ditolak_saat_decode()` {
+    fun frame_terpotong_ditolak_saat_decode() {
         val penuh = codec.encodeMessage(sampleFrame())
         val terpotong = penuh.copyOf(20)
         var ditolak = false
@@ -118,7 +118,7 @@ class FrameCodecTest {
     }
 
     @Test
-    fun `decode_menolak_frame_beacon()` {
+    fun decode_menolak_frame_beacon() {
         val beacon = codec.encodeBeacon(
             BeaconFrame(NodeId(0xB19C77), 0, 50, 0, 5, 0, 1L),
         )
@@ -128,7 +128,7 @@ class FrameCodecTest {
     }
 
     @Test
-    fun `fragmen_kosong_boleh_ada_pada_pesan_sos_kosong()` {
+    fun fragmen_kosong_boleh_ada_pada_pesan_sos_kosong() {
         val kosong = sampleFrame(payload = ByteArray(0), fragCount = 1, totalLen = 0)
         assertArrayEquals(ByteArray(0), codec.decode(codec.encodeMessage(kosong)).payloadChunk)
     }

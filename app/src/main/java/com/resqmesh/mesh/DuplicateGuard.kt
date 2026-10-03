@@ -17,28 +17,50 @@ sealed interface FrameVerdict {
 }
 
 /**
- * Dua level dedupe plus policy penerusan:
+ * Dua level dedupe plus policy penerusan (Requirement F6):
  *
  * 1. **Frame** — kunci (messageId, fragIndex). Inilah yang mencegah frame yang
  *    sama di-advertise berulang kali. Fragmen berbeda dari pesan yang sama
  *    tetap dianggap baru, sehingga re-assembly tidak pernah tersangkut.
- * 2. **Pesan** — `SeenMessageEntity.forwardCount` membatasi berapa kali satu
- *    pesan boleh diteruskan.
+ * 2. **Pesan** — `SeenMessageEntity` memantau message_id untuk mencegah duplikasi,
+ *    penyimpanan rekaman ganda di DB, dan banjir relay (flood prevention).
  *
- * Batasnya berbeda menurut jenis. Chat biasa memakai bias "maju ke hop terkecil
- * saja" supaya tidak membanjiri duty cycle advertising. SOS memakai batas 1
- * tanpa bias hop: setiap node meneruskan sekali, lalu menyingkir. Tanpa bias
- * hop, SOS tetap menjangkau node yang hanya bisa dicapai lewat jalur panjang,
- * karena keselamatan lebih penting daripada hemat advertisement.
- *
- * Semua pemeriksaan memakai INSERT ... IGNORE sehingga tetap atomik ketika dua
- * frame tiba bersamaan pada dispatcher berbeda.
+ * Menyediakan fungsi pengecekan cepat [isDuplicate] dan [markSeen],
+ * serta pembersihan berkala [pruneExpired] berbasis waktu (time-based expiry).
  */
 class DuplicateGuard(
     private val seenDao: SeenMessageDao,
     private val seenFrameDao: SeenFrameDao,
     private val clock: TimeProvider,
 ) {
+
+    /**
+     * Pengecekan cepat apakah message_id sudah pernah diterima/diproses sebelumnya (F6).
+     */
+    suspend fun isDuplicate(id: MessageId): Boolean {
+        return seenDao.find(id.value) != null
+    }
+
+    /**
+     * Menandai pesan sebagai telah dilihat/diproses secara cepat.
+     * Mengembalikan true jika pesan baru (fresh), false jika duplikat (F6).
+     */
+    suspend fun markSeen(id: MessageId, hop: Int, isSos: Boolean = false): Boolean {
+        val now = clock.now()
+        val rowId = seenDao.tryInsert(
+            SeenMessageEntity(
+                messageKey = id.value,
+                originNodeId = id.origin.value,
+                msgSeq = id.seq,
+                firstSeenAt = now,
+                expiresAt = now + MeshConfig.SEEN_RETENTION_MS,
+                hopCount = hop,
+                forwardCount = 0,
+                isSos = isSos,
+            ),
+        )
+        return rowId != -1L
+    }
 
     suspend fun registerFrame(id: MessageId, fragIndex: Int, hop: Int): FrameVerdict {
         val now = clock.now()
@@ -56,19 +78,7 @@ class DuplicateGuard(
 
     /** Mendaftarkan pesan saat pertama kali diterima; dipakai untuk bookkeeping forward. */
     suspend fun trackMessage(id: MessageId, hop: Int, isSos: Boolean = false) {
-        val now = clock.now()
-        seenDao.tryInsert(
-            SeenMessageEntity(
-                messageKey = id.value,
-                originNodeId = id.origin.value,
-                msgSeq = id.seq,
-                firstSeenAt = now,
-                expiresAt = now + MeshConfig.SEEN_RETENTION_MS,
-                hopCount = hop,
-                forwardCount = 0,
-                isSos = isSos,
-            ),
-        )
+        markSeen(id, hop, isSos)
     }
 
     /**
@@ -107,7 +117,7 @@ class DuplicateGuard(
     suspend fun forwardCountOf(id: MessageId): Int =
         seenDao.find(id.value)?.forwardCount ?: 0
 
-    /** Membersihkan catatan frame maupun pesan yang sudah melewati retensi. */
+    /** Membersihkan catatan frame maupun pesan yang sudah melewati retensi (time-based expiry). */
     suspend fun pruneExpired(): Int {
         val now = clock.now()
         return seenDao.purgeExpired(now) + seenFrameDao.purgeExpired(now)

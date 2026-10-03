@@ -1,5 +1,6 @@
 package com.resqmesh.domain.model
 
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -21,7 +22,7 @@ class NodeIdTest {
 
     @Test
     fun `from_hex_tidak_valid_jatuh_ke_unknown`() {
-        assertEquals(NodeId.UNKNOWN, NodeId.fromHex("bukan-hex"))
+        assertEquals(NodeId(NodeId.UNKNOWN), NodeId.fromHex("bukan-hex"))
     }
 
     @Test
@@ -35,5 +36,14 @@ class NodeIdTest {
         var ditolak = false
         runCatching { NodeId(0x1000000L) }.onFailure { ditolak = true }
         assertTrue(ditolak)
+    }
+
+    @Test
+    fun `konversi_byte_array_3_byte_bolak_balik`() {
+        val original = NodeId(0xA83F2C)
+        val bytes = original.toByteArray()
+        assertEquals(3, bytes.size)
+        assertArrayEquals(byteArrayOf(0xA8.toByte(), 0x3F.toByte(), 0x2C.toByte()), bytes)
+        assertEquals(original, NodeId.fromByteArray(bytes))
     }
 }

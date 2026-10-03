@@ -5,6 +5,7 @@ import androidx.room.Insert
 import androidx.room.Query
 
 @Dao
+@JvmSuppressWildcards
 interface MessageHopDao {
 
     @Insert

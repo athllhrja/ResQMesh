@@ -13,6 +13,12 @@ value class NodeId(val value: Long) : Comparable<NodeId> {
     val isValid: Boolean get() = value != UNKNOWN
     val isBroadcast: Boolean get() = value == BROADCAST
 
+    fun toByteArray(): ByteArray = byteArrayOf(
+        ((value shr 16) and 0xFF).toByte(),
+        ((value shr 8) and 0xFF).toByte(),
+        (value and 0xFF).toByte(),
+    )
+
     override fun toString(): String = "NODE-$hex"
 
     override fun compareTo(other: NodeId): Int = value.compareTo(other.value)
@@ -27,6 +33,14 @@ value class NodeId(val value: Long) : Comparable<NodeId> {
 
         fun fromHex(value: String): NodeId =
             NodeId(value.removePrefix("NODE-").trim().toLongOrNull(16) ?: UNKNOWN)
+
+        fun fromByteArray(bytes: ByteArray): NodeId {
+            require(bytes.size >= 3) { "NodeId butuh minimal 3 byte" }
+            val b0 = bytes[0].toLong() and 0xFF
+            val b1 = bytes[1].toLong() and 0xFF
+            val b2 = bytes[2].toLong() and 0xFF
+            return NodeId((b0 shl 16) or (b1 shl 8) or b2)
+        }
 
         fun random(random: Random = Random.Default): NodeId =
             NodeId((MIN_VALUE..MAX_VALUE).random(random))

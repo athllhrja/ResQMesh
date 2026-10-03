@@ -38,7 +38,7 @@ interface MeshTransport {
     /** [onFrame] membawa frame pesan ter-decode. */
     fun start(
         onFrame: (MeshFrame, Int) -> Unit,
-        onBeacon: (ByteArray) -> Unit,
+        onBeacon: (ByteArray, Int) -> Unit,
     )
 
     fun stop()
@@ -53,7 +53,7 @@ interface MeshTransport {
 }
 
 class NoOpMeshTransport : MeshTransport {
-    override fun start(onFrame: (MeshFrame, Int) -> Unit, onBeacon: (ByteArray) -> Unit) = Unit
+    override fun start(onFrame: (MeshFrame, Int) -> Unit, onBeacon: (ByteArray, Int) -> Unit) = Unit
     override fun stop() = Unit
     override fun advertise(payload: ByteArray) = Unit
     override fun sendOverLink(peerId: NodeId, frames: List<MeshFrame>) = Unit
@@ -88,7 +88,7 @@ class MeshManager(
         scheduler.start()
         transport.start(
             onFrame = { frame, rssi -> scope.launch { handleFrame(frame, rssi) } },
-            onBeacon = { payload -> scope.launch { onBeaconFrame(payload) } },
+            onBeacon = { payload, rssi -> scope.launch { onBeaconFrame(payload, rssi) } },
         )
         if (pruneJob == null) {
             pruneJob = scope.launch { pruneLoop() }
@@ -344,7 +344,7 @@ suspend fun submitSos(
         )
     }
 
-    suspend fun onBeaconFrame(payload: ByteArray) {
+    suspend fun onBeaconFrame(payload: ByteArray, rssi: Int = SignalStrength.RSSI_NONE) {
         val beacon = runCatching { codec.decodeBeacon(payload) }.getOrNull() ?: return
         if (beacon.nodeId == selfId) return
         val now = clock.now()
@@ -360,13 +360,26 @@ suspend fun submitSos(
                     gattPeerCount = beacon.gattPeerCount,
                     defaultTtl = beacon.defaultTtl,
                     nodeSeq = beacon.nodeSeq,
-                    rssi = SignalStrength.RSSI_NONE,
+                    rssi = rssi,
                     isSelf = false,
                     firstSeenAt = now,
                     lastSeenAt = now,
                 ),
             )
             onNodeDiscovered(beacon.nodeId)
+        } else {
+            nodeDao.upsert(
+                existing.copy(
+                    statusFlags = beacon.statusFlags,
+                    batteryPct = beacon.batteryPct,
+                    pendingCount = beacon.pendingCount,
+                    gattPeerCount = beacon.gattPeerCount,
+                    defaultTtl = beacon.defaultTtl,
+                    nodeSeq = beacon.nodeSeq,
+                    rssi = rssi,
+                    lastSeenAt = now,
+                ),
+            )
         }
         // Selalu terapkan beacon terbaru supaya statusFlags konsisten dan
         // node yang baru ditemukan tetap menandai dirinya MESH_ACTIVE.

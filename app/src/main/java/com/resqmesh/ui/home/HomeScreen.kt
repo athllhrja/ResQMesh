@@ -47,6 +47,24 @@ fun HomeScreen(
     onOpenAlerts: () -> Unit,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    val locationPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val granted = permissions.values.any { it }
+        if (granted) {
+            viewModel.resolveLocation()
+        }
+    }
+
+    val handleRetryLocation = {
+        if (com.resqmesh.ui.MeshPermissions.hasLocation(context)) {
+            viewModel.resolveLocation()
+        } else {
+            locationPermissionLauncher.launch(com.resqmesh.ui.MeshPermissions.locationPermissions)
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -79,7 +97,7 @@ fun HomeScreen(
             onToggleHazard = viewModel::toggleHazard,
             onChangeVictimCount = viewModel::changeVictimCount,
             onTextChange = viewModel::setSosText,
-            onRetryLocation = viewModel::resolveLocation,
+            onRetryLocation = handleRetryLocation,
             onSend = viewModel::sendSos,
             onDismiss = viewModel::dismissSosDialog,
         )

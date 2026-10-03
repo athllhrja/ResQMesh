@@ -88,6 +88,9 @@ class RelayEngine(
 
         duplicateGuard.trackMessage(frame.messageId, frame.hopCount, frame.isSos)
         val verdict = duplicateGuard.registerFrame(frame.messageId, frame.fragIndex, frame.hopCount)
+        if (verdict is FrameVerdict.Repeated) {
+            return RelayDecision.Reject(RejectReason.DUPLICATE)
+        }
         val stored = messageDao.findByKey(frame.messageId.value)
 
         if (peer != Peer.SELF) {
@@ -253,7 +256,7 @@ class RelayEngine(
                 originBatteryPct = stored?.originBatteryPct,
                 victimCount = stored?.victimCount ?: 0,
                 hazards = stored?.hazards ?: 0,
-                isSosLoc = stored?.isSosLoc ?: false,
+                isSosLoc = frame.isSosLoc || (stored?.isSosLoc ?: false),
             ),
         )
     }

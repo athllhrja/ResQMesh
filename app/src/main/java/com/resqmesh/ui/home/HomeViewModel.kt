@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 enum class LocationNote {
@@ -135,7 +136,7 @@ class HomeViewModel(
         viewModelScope.launch {
             val note = when (val result = locationSource.currentFix(readBattery())) {
                 is LocationResult.Ready -> {
-                    sos.update { it.copy(fix = result.fix, note = LocationNote.NONE) }
+                    sos.update { it.copy(fix = result.fix, note = LocationNote.NONE, isResolvingLocation = false) }
                     return@launch
                 }
 

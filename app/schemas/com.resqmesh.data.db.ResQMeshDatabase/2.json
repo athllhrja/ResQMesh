@@ -1,0 +1,569 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 2,
+    "identityHash": "6e9d152633871db126bf994e441044c4",
+    "entities": [
+      {
+        "tableName": "NodeEntity",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`nodeId` INTEGER NOT NULL, `displayName` TEXT NOT NULL, `statusFlags` INTEGER NOT NULL, `batteryPct` INTEGER NOT NULL, `pendingCount` INTEGER NOT NULL, `gattPeerCount` INTEGER NOT NULL, `defaultTtl` INTEGER NOT NULL, `nodeSeq` INTEGER NOT NULL, `rssi` INTEGER NOT NULL, `isSelf` INTEGER NOT NULL, `firstSeenAt` INTEGER NOT NULL, `lastSeenAt` INTEGER NOT NULL, PRIMARY KEY(`nodeId`))",
+        "fields": [
+          {
+            "fieldPath": "nodeId",
+            "columnName": "nodeId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "displayName",
+            "columnName": "displayName",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "statusFlags",
+            "columnName": "statusFlags",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "batteryPct",
+            "columnName": "batteryPct",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "pendingCount",
+            "columnName": "pendingCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "gattPeerCount",
+            "columnName": "gattPeerCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "defaultTtl",
+            "columnName": "defaultTtl",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nodeSeq",
+            "columnName": "nodeSeq",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rssi",
+            "columnName": "rssi",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isSelf",
+            "columnName": "isSelf",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "firstSeenAt",
+            "columnName": "firstSeenAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastSeenAt",
+            "columnName": "lastSeenAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "nodeId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_NodeEntity_lastSeenAt",
+            "unique": false,
+            "columnNames": [
+              "lastSeenAt"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_NodeEntity_lastSeenAt` ON `${TABLE_NAME}` (`lastSeenAt`)"
+          },
+          {
+            "name": "index_NodeEntity_isSelf",
+            "unique": false,
+            "columnNames": [
+              "isSelf"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_NodeEntity_isSelf` ON `${TABLE_NAME}` (`isSelf`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "MessageEntity",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`messageKey` INTEGER NOT NULL, `messageIdHex` TEXT NOT NULL, `originNodeId` INTEGER NOT NULL, `destinationId` INTEGER NOT NULL, `peerId` INTEGER NOT NULL, `payload` TEXT NOT NULL, `payloadBytes` BLOB NOT NULL, `createdAt` INTEGER NOT NULL, `initialTtl` INTEGER NOT NULL, `ttl` INTEGER NOT NULL, `hopCount` INTEGER NOT NULL, `status` TEXT NOT NULL, `direction` TEXT NOT NULL, `isSos` INTEGER NOT NULL, `isReplay` INTEGER NOT NULL, `firstForwardAt` INTEGER, `deliveredAt` INTEGER, `isReassembly` INTEGER NOT NULL, `lastError` TEXT, `incidentKey` INTEGER, `sosKind` INTEGER NOT NULL, `latE4` INTEGER, `lonE4` INTEGER, `accuracyM` INTEGER, `fixAgeSec` INTEGER, `originBatteryPct` INTEGER, `victimCount` INTEGER NOT NULL, `hazards` INTEGER NOT NULL, `isSosLoc` INTEGER NOT NULL, PRIMARY KEY(`messageKey`))",
+        "fields": [
+          {
+            "fieldPath": "messageKey",
+            "columnName": "messageKey",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "messageIdHex",
+            "columnName": "messageIdHex",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "originNodeId",
+            "columnName": "originNodeId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "destinationId",
+            "columnName": "destinationId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "peerId",
+            "columnName": "peerId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "payload",
+            "columnName": "payload",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "payloadBytes",
+            "columnName": "payloadBytes",
+            "affinity": "BLOB",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "initialTtl",
+            "columnName": "initialTtl",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ttl",
+            "columnName": "ttl",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hopCount",
+            "columnName": "hopCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "direction",
+            "columnName": "direction",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isSos",
+            "columnName": "isSos",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isReplay",
+            "columnName": "isReplay",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "firstForwardAt",
+            "columnName": "firstForwardAt",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "deliveredAt",
+            "columnName": "deliveredAt",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "isReassembly",
+            "columnName": "isReassembly",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastError",
+            "columnName": "lastError",
+            "affinity": "TEXT",
+            "notNull": false
+          },
+          {
+            "fieldPath": "incidentKey",
+            "columnName": "incidentKey",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "sosKind",
+            "columnName": "sosKind",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "latE4",
+            "columnName": "latE4",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "lonE4",
+            "columnName": "lonE4",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "accuracyM",
+            "columnName": "accuracyM",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "fixAgeSec",
+            "columnName": "fixAgeSec",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "originBatteryPct",
+            "columnName": "originBatteryPct",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "victimCount",
+            "columnName": "victimCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hazards",
+            "columnName": "hazards",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isSosLoc",
+            "columnName": "isSosLoc",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "messageKey"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_MessageEntity_createdAt",
+            "unique": false,
+            "columnNames": [
+              "createdAt"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_MessageEntity_createdAt` ON `${TABLE_NAME}` (`createdAt`)"
+          },
+          {
+            "name": "index_MessageEntity_status",
+            "unique": false,
+            "columnNames": [
+              "status"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_MessageEntity_status` ON `${TABLE_NAME}` (`status`)"
+          },
+          {
+            "name": "index_MessageEntity_peerId_createdAt",
+            "unique": false,
+            "columnNames": [
+              "peerId",
+              "createdAt"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_MessageEntity_peerId_createdAt` ON `${TABLE_NAME}` (`peerId`, `createdAt`)"
+          },
+          {
+            "name": "index_MessageEntity_status_destinationId",
+            "unique": false,
+            "columnNames": [
+              "status",
+              "destinationId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_MessageEntity_status_destinationId` ON `${TABLE_NAME}` (`status`, `destinationId`)"
+          },
+          {
+            "name": "index_MessageEntity_isSos_createdAt",
+            "unique": false,
+            "columnNames": [
+              "isSos",
+              "createdAt"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_MessageEntity_isSos_createdAt` ON `${TABLE_NAME}` (`isSos`, `createdAt`)"
+          },
+          {
+            "name": "index_MessageEntity_incidentKey",
+            "unique": false,
+            "columnNames": [
+              "incidentKey"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_MessageEntity_incidentKey` ON `${TABLE_NAME}` (`incidentKey`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "MessageHopEntity",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `messageKey` INTEGER NOT NULL, `nodeId` INTEGER NOT NULL, `hopIndex` INTEGER NOT NULL, `rssi` INTEGER NOT NULL, `latencyMs` INTEGER, `observedAt` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "messageKey",
+            "columnName": "messageKey",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nodeId",
+            "columnName": "nodeId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hopIndex",
+            "columnName": "hopIndex",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rssi",
+            "columnName": "rssi",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "latencyMs",
+            "columnName": "latencyMs",
+            "affinity": "INTEGER",
+            "notNull": false
+          },
+          {
+            "fieldPath": "observedAt",
+            "columnName": "observedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_MessageHopEntity_messageKey_hopIndex",
+            "unique": false,
+            "columnNames": [
+              "messageKey",
+              "hopIndex"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_MessageHopEntity_messageKey_hopIndex` ON `${TABLE_NAME}` (`messageKey`, `hopIndex`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "SeenMessageEntity",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`messageKey` INTEGER NOT NULL, `originNodeId` INTEGER NOT NULL, `msgSeq` INTEGER NOT NULL, `firstSeenAt` INTEGER NOT NULL, `expiresAt` INTEGER NOT NULL, `hopCount` INTEGER NOT NULL, `forwardCount` INTEGER NOT NULL, `isSos` INTEGER NOT NULL, PRIMARY KEY(`messageKey`))",
+        "fields": [
+          {
+            "fieldPath": "messageKey",
+            "columnName": "messageKey",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "originNodeId",
+            "columnName": "originNodeId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "msgSeq",
+            "columnName": "msgSeq",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "firstSeenAt",
+            "columnName": "firstSeenAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "expiresAt",
+            "columnName": "expiresAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hopCount",
+            "columnName": "hopCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "forwardCount",
+            "columnName": "forwardCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isSos",
+            "columnName": "isSos",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "messageKey"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_SeenMessageEntity_expiresAt",
+            "unique": false,
+            "columnNames": [
+              "expiresAt"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_SeenMessageEntity_expiresAt` ON `${TABLE_NAME}` (`expiresAt`)"
+          },
+          {
+            "name": "index_SeenMessageEntity_originNodeId_msgSeq",
+            "unique": false,
+            "columnNames": [
+              "originNodeId",
+              "msgSeq"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_SeenMessageEntity_originNodeId_msgSeq` ON `${TABLE_NAME}` (`originNodeId`, `msgSeq`)"
+          }
+        ],
+        "foreignKeys": []
+      },
+      {
+        "tableName": "SeenFrameEntity",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`messageKey` INTEGER NOT NULL, `fragIndex` INTEGER NOT NULL, `hopCount` INTEGER NOT NULL, `firstSeenAt` INTEGER NOT NULL, `expiresAt` INTEGER NOT NULL, PRIMARY KEY(`messageKey`, `fragIndex`))",
+        "fields": [
+          {
+            "fieldPath": "messageKey",
+            "columnName": "messageKey",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fragIndex",
+            "columnName": "fragIndex",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hopCount",
+            "columnName": "hopCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "firstSeenAt",
+            "columnName": "firstSeenAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "expiresAt",
+            "columnName": "expiresAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "messageKey",
+            "fragIndex"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_SeenFrameEntity_expiresAt",
+            "unique": false,
+            "columnNames": [
+              "expiresAt"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_SeenFrameEntity_expiresAt` ON `${TABLE_NAME}` (`expiresAt`)"
+          }
+        ],
+        "foreignKeys": []
+      }
+    ],
+    "views": [],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '6e9d152633871db126bf994e441044c4')"
+    ]
+  }
+}

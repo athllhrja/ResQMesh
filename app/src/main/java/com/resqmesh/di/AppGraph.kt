@@ -33,6 +33,7 @@ import com.resqmesh.mesh.NoOpMeshTransport
 import com.resqmesh.mesh.PeerLinkRegistry
 import com.resqmesh.mesh.RelayEngine
 import com.resqmesh.mesh.TtlPolicy
+import com.resqmesh.mesh.ble.BleMeshTransport
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -62,11 +63,9 @@ class AppGraph(context: Context) {
     val selfId: NodeId get() = identityStore.nodeId
 
     /**
-     * Transport sungguhan (BleMeshTransport) menggantikan kelas ini pada tahap
-     * berikutnya. Selama masih NoOp, logika mesh tetap bisa diuji lewat
-     * RelayEngineTest tanpa perangkat.
+     * Transport BLE sungguhan (BleMeshTransport) yang menangani BLE Scanning & Advertising.
      */
-    val transport: MeshTransport = NoOpMeshTransport()
+    val transport: MeshTransport by lazy { BleMeshTransport(appContext, codec) }
 
     val peerLinks: PeerLinkRegistry = object : PeerLinkRegistry {
         override fun connectedPeers(): Set<NodeId> = transport.connectedPeers()

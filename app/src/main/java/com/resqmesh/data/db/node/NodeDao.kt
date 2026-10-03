@@ -6,10 +6,11 @@ import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
 
 @Dao
+@JvmSuppressWildcards
 interface NodeDao {
 
     @Upsert
-    suspend fun upsert(node: NodeEntity)
+    suspend fun upsert(node: NodeEntity): Long
 
     @Query("SELECT * FROM NodeEntity WHERE isSelf = 1 LIMIT 1")
     suspend fun self(): NodeEntity?
@@ -24,7 +25,7 @@ interface NodeDao {
     suspend fun find(id: Long): NodeEntity?
 
     @Query("UPDATE NodeEntity SET rssi = :rssi, lastSeenAt = :now WHERE nodeId = :id")
-    suspend fun touchRssi(id: Long, rssi: Int, now: Long)
+    suspend fun touchRssi(id: Long, rssi: Int, now: Long): Int
 
     @Query("""
         UPDATE NodeEntity
@@ -44,7 +45,7 @@ interface NodeDao {
         peers: Int,
         ttl: Int,
         seq: Long,
-    )
+    ): Int
 
     @Query("DELETE FROM NodeEntity WHERE isSelf = 0 AND lastSeenAt < :cutoff")
     suspend fun pruneStale(cutoff: Long): Int

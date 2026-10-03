@@ -6,6 +6,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 
 @Dao
+@JvmSuppressWildcards
 interface SeenFrameDao {
 
     /** Mengembalikan -1 bila frame persis ini sudah pernah masuk. */

@@ -21,6 +21,8 @@ interface MeshRepository {
 
     /** Insiden darurat, satu insiden per kartu walau dikirim sebagai dua pesan. */
     fun observeSosIncidents(limit: Int = 100): Flow<List<SosIncident>>
+    fun observeSelfSosIncidents(limit: Int = 100): Flow<List<SosIncident>>
+    fun observePeerSosIncidents(limit: Int = 100): Flow<List<SosIncident>>
 
     suspend fun sendTo(
         destination: NodeId,
