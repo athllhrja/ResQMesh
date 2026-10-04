@@ -4,11 +4,12 @@ Skrip Analisis Log Eksperimen KTI ResQMesh.
 
 Membaca satu atau beberapa berkas CSV hasil ekspor dari aplikasi ResQMesh,
 menggabungkan log dari beberapa HP, dan menghitung metrik KTI utama:
-1. PDR (Packet Delivery Ratio) %
-2. RTT (Round-Trip Time) di Origin (Mean, Min, Max, Median) dalam ms
-3. Hop Count (Rata-rata dan distribusi jarak hop)
-4. Baterai Delta (Selisih % baterai awal - akhir per node)
-5. Total Pancaran & Overhead Relay (TX / RELAY events)
+1. (a) PDR SOS Sampai Responder (berdasarkan event RX_COMPLETE di Responder)
+2. (b) PDR Konfirmasi ACK di Origin (berdasarkan event ACK_RX / DELIVERED di Origin)
+3. RTT (Round-Trip Time) di Origin (Mean, Min, Max, Median) dalam ms
+4. Hop Count (Rata-rata dan distribusi jarak hop)
+5. Baterai Delta (Selisih % baterai awal - akhir per node)
+6. Total Pancaran & Overhead Relay (TX / RELAY / ACK_TX events)
 """
 
 import sys
@@ -67,9 +68,9 @@ def analyze_experiment(records):
         print(f"\n>>> RUN ID: {run_id} | Skenario: {scenario}")
         print("-" * 70)
 
-        # 1. PDR & Messages Tracking
         sends = {}  # msgKey -> record
-        deliveries = {}  # msgKey -> record
+        rx_completes = {}  # msgKey -> record
+        ack_deliveries = {}  # msgKey -> record
         rtt_list = []
         hops_list = []
 
@@ -77,6 +78,7 @@ def analyze_experiment(records):
         battery_by_node = defaultdict(list)
 
         tx_count = 0
+        ack_tx_count = 0
         relay_count = 0
 
         for r in run_records:
@@ -91,9 +93,12 @@ def analyze_experiment(records):
 
             if event == 'SEND':
                 sends[msg_key] = r
+            elif event == 'RX_COMPLETE':
+                if msg_key not in rx_completes:
+                    rx_completes[msg_key] = r
             elif event in ('DELIVERED', 'ACK_RX'):
-                if msg_key not in deliveries:
-                    deliveries[msg_key] = r
+                if msg_key not in ack_deliveries:
+                    ack_deliveries[msg_key] = r
                 if msg_key in sends:
                     # RTT dihitung pada Origin dari SEND -> ACK_RX / DELIVERED pada jam tunggal
                     send_time = sends[msg_key]['elapsedRealtimeMs']
@@ -105,14 +110,20 @@ def analyze_experiment(records):
                     hops_list.append(r['hop'])
             elif event == 'TX':
                 tx_count += 1
+            elif event == 'ACK_TX':
+                ack_tx_count += 1
             elif event == 'RELAY':
                 relay_count += 1
 
         total_sent = len(sends)
-        total_delivered = len(deliveries)
-        pdr = (total_delivered / total_sent * 100.0) if total_sent > 0 else 0.0
+        total_rx_complete = len(rx_completes)
+        total_ack_delivered = len(ack_deliveries)
 
-        print(f"  [1] Packet Delivery Ratio (PDR) : {pdr:.2f}% ({total_delivered}/{total_sent} SOS delivered)")
+        pdr_responder = (total_rx_complete / total_sent * 100.0) if total_sent > 0 else 0.0
+        pdr_ack = (total_ack_delivered / total_sent * 100.0) if total_sent > 0 else 0.0
+
+        print(f"  [1a] PDR SOS Sampai Responder (RX_COMPLETE) : {pdr_responder:.2f}% ({total_rx_complete}/{total_sent})")
+        print(f"  [1b] PDR Konfirmasi ACK di Origin (ACK_RX)   : {pdr_ack:.2f}% ({total_ack_delivered}/{total_sent})")
 
         # 2. RTT Statistics
         if rtt_list:
@@ -125,7 +136,7 @@ def analyze_experiment(records):
             print(f"      - Median                    : {median_rtt:.2f} ms")
             print(f"      - Min / Max                 : {min_rtt} ms / {max_rtt} ms")
         else:
-            print("  [2] RTT                            : No ACK RTT recorded")
+            print("  [2] RTT                            : Belum ada RTT terkonfirmasi ACK")
 
         # 3. Hop Count
         if hops_list:
@@ -148,7 +159,7 @@ def analyze_experiment(records):
                 print(f"      - Node {node} : {samples[0][1]}% (Konstan)")
 
         # 5. Overhead
-        print(f"  [5] Aktivasi Pancaran BLE          : Total TX={tx_count}, Total RELAY={relay_count}")
+        print(f"  [5] Aktivasi Pancaran BLE          : Total TX={tx_count}, ACK_TX={ack_tx_count}, RELAY={relay_count}")
 
     print("\n" + "=" * 70)
 

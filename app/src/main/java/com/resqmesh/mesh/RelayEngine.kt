@@ -57,6 +57,8 @@ class RelayEngine(
 ) {
 
     @Volatile var isResponder: Boolean = false
+    private val responderAckTimeMap = mutableMapOf<Long, Long>()
+    private val ackForwardCountMap = mutableMapOf<Long, Int>()
 
     suspend fun onFrame(frame: MeshFrame, peer: Peer, rssi: Int): RelayDecision {
         val now = clock.now()
@@ -86,6 +88,14 @@ class RelayEngine(
             if (frame.destination == selfId) {
                 return RelayDecision.Ignore
             }
+
+            duplicateGuard.trackMessage(frame.messageId, frame.hopCount, isSos = false)
+
+            val currentAckCount = ackForwardCountMap[frame.messageId.value] ?: 0
+            if (currentAckCount >= MeshConfig.ACK_FORWARD_LIMIT) {
+                return RelayDecision.Reject(RejectReason.DUPLICATE)
+            }
+
             val verdict = duplicateGuard.registerFrame(
                 id = frame.messageId,
                 fragIndex = 0,
@@ -93,13 +103,19 @@ class RelayEngine(
                 isAck = true,
             )
             if (verdict is FrameVerdict.Repeated) {
-                return RelayDecision.Reject(RejectReason.DUPLICATE)
+                if (duplicateGuard.shouldSuppress(frame.messageId, frame.hopCount)) {
+                    return RelayDecision.Reject(RejectReason.DUPLICATE)
+                }
             }
+
             if (!ttlPolicy.shouldForward(frame.ttl, frame.hopCount, frame.inferredInitialTtl())) {
                 return RelayDecision.Reject(RejectReason.TTL_EXPIRED)
             }
+
+            ackForwardCountMap[frame.messageId.value] = currentAckCount + 1
             val nextTtl = ttlPolicy.nextTtl(frame.ttl)
             val nextHop = ttlPolicy.nextHop(frame.hopCount)
+            duplicateGuard.noteForward(frame.messageId, nextHop)
             val forwardedAck = frame.forwarded(nextTtl = nextTtl, nextHop = nextHop)
             logger?.logEvent(
                 nodeId = selfId,
@@ -119,10 +135,25 @@ class RelayEngine(
 
         duplicateGuard.trackMessage(frame.messageId, frame.hopCount, frame.isSos)
         val verdict = duplicateGuard.registerFrame(frame.messageId, frame.fragIndex, frame.hopCount)
+        val stored = messageDao.findByKey(frame.messageId.value)
+
         if (verdict is FrameVerdict.Repeated) {
+            if (isResponder && frame.isSos && stored != null && (stored.status == MessageStatus.DELIVERED.wire || stored.deliveredAt != null)) {
+                val lastAckTime = responderAckTimeMap[frame.messageId.value] ?: 0L
+                if (now - lastAckTime >= MeshConfig.RESPONDER_ACK_RESEND_MIN_INTERVAL_MS) {
+                    responderAckTimeMap[frame.messageId.value] = now
+                    logger?.logEvent(
+                        nodeId = selfId,
+                        event = com.resqmesh.experiment.ExperimentEvent.ACK_TX,
+                        messageKey = frame.messageId.value,
+                        hop = 0,
+                        ttl = MeshConfig.ACK_TTL,
+                    )
+                    return RelayDecision.Ack(buildAck(frame))
+                }
+            }
             return RelayDecision.Reject(RejectReason.DUPLICATE)
         }
-        val stored = messageDao.findByKey(frame.messageId.value)
 
         if (peer != Peer.SELF) {
             /*
@@ -167,6 +198,17 @@ class RelayEngine(
         verdict: FrameVerdict,
         now: Long,
     ): RelayDecision {
+        if (frame.isSos) {
+            logger?.logEvent(
+                nodeId = selfId,
+                event = com.resqmesh.experiment.ExperimentEvent.RX_COMPLETE,
+                messageKey = frame.messageId.value,
+                fragIndex = frame.fragIndex,
+                hop = frame.hopCount,
+                ttl = frame.ttl,
+            )
+        }
+
         val isDestination = frame.destination == selfId || (isResponder && frame.isSos)
 
         if (isDestination) {

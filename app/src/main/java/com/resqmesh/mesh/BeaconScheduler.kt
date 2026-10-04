@@ -27,6 +27,8 @@ class BeaconScheduler(
     private val codec: FrameCodec,
     private val publisher: FramePublisher,
     private val random: Random = Random.Default,
+    private val selfId: com.resqmesh.domain.model.NodeId? = null,
+    private val logger: com.resqmesh.experiment.ExperimentLogger? = null,
 ) {
     private val queue = RelayQueue()
     private var job: Job? = null
@@ -52,6 +54,16 @@ class BeaconScheduler(
                 }
                 repeat(repeats) {
                     publisher.publish(wire)
+                    if (selfId != null) {
+                        logger?.logEvent(
+                            nodeId = selfId,
+                            event = if (frame.isAck) com.resqmesh.experiment.ExperimentEvent.ACK_TX else com.resqmesh.experiment.ExperimentEvent.TX,
+                            messageKey = frame.messageId.value,
+                            fragIndex = frame.fragIndex,
+                            hop = frame.hopCount,
+                            ttl = frame.ttl,
+                        )
+                    }
                     delay(jitter(interval))
                 }
             }

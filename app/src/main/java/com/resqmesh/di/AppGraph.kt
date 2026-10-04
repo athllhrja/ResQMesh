@@ -78,6 +78,8 @@ class AppGraph(context: Context) {
             scope = scope,
             codec = codec,
             publisher = FramePublisher { payload -> transport.advertise(payload) },
+            selfId = selfId,
+            logger = experimentLogger,
         )
     }
 

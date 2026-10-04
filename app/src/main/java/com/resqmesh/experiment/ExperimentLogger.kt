@@ -14,6 +14,7 @@ enum class ExperimentEvent {
     SEND,
     TX,
     RX,
+    RX_COMPLETE,
     RELAY,
     ACK_TX,
     ACK_RX,
