@@ -7,7 +7,7 @@ Proyek penelitian rekayasa perangkat lunak dan jaringan komunikasi darurat (*Del
 ## 1. Status Implementasi & Kesiapan Eksperimen Lapangan
 
 - **Platform & Teknologi:** Android (Kotlin, Jetpack Compose, Room Database, Android BLE API / `BluetoothLeScanner` & `BluetoothLeAdvertiser`).
-- **Penyelesaian Logika Protokol (F1 – F12):** Seluruh fitur inti (Alokasi Node ID 24-bit, Device Discovery BLE, Pengambilan Snapshot Lokasi, Pembuatan SOS Dua-Rantai, Multi-Hop Relay, Duplicate Detection, TTL Enforcement, Hop Count Tracking, Lifecycle Status, Broadcast SOS ACK & Responder Role, Local History, dan Store-and-Forward Buffer) telah selesai diimplementasikan dan diverifikasi melalui **100+ unit test pengujian otomatis JVM**.
+- **Penyelesaian Logika Protokol (F1 – F12):** Seluruh fitur inti (Alokasi Node ID 24-bit, Device Discovery BLE, Pengambilan Snapshot Lokasi, Pembuatan SOS Dua-Rantai, Multi-Hop Relay, Duplicate Detection, TTL Enforcement, Hop Count Tracking, Lifecycle Status, Broadcast SOS ACK & Responder Role, Local History, dan Store-and-Forward Buffer) telah diimplementasikan pada tingkat kode dan lulus uji unit JVM serta simulasi multi-node; belum diuji pada perangkat fisik.**.
 - **Integrasi Transport Hardware Native:** Lapisan transport telah terhubung secara penuh ke driver perangkat keras native melalui `BleMeshTransport` (Company ID `0xFFFF`, struktur payload biner 27-byte), mengoperasikan Foreground Service (`connectedDevice`) demi menjamin jaringan mesh tetap berjalan di latar belakang.
 
 ---
