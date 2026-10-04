@@ -175,7 +175,7 @@ class RelayEngine(
             is AssemblyResult.Malformed -> return RelayDecision.Reject(RejectReason.MALFORMED)
             is AssemblyResult.Stale -> return RelayDecision.Ignore
             is AssemblyResult.Incomplete -> {
-                if (stored == null || !stored.isReassembly) {
+                if (stored == null || stored.isReassembly) {
                     upsertReassembly(frame, stored, now)
                 }
                 return RelayDecision.Ignore
@@ -194,20 +194,28 @@ class RelayEngine(
         verdict: FrameVerdict,
         now: Long,
     ): RelayDecision {
-        if (frame.isSos) {
-            logger?.logEvent(
-                nodeId = selfId,
-                event = com.resqmesh.experiment.ExperimentEvent.RX_COMPLETE,
-                messageKey = frame.messageId.value,
-                fragIndex = frame.fragIndex,
-                hop = frame.hopCount,
-                ttl = frame.ttl,
-            )
+        val sos = readSosColumns(frame, payload)
+        if (frame.isSosPayload && sos.error != null) {
+            runCatching {
+                android.util.Log.e("RelayEngine", "Gagal meng-dekode SOS payload malformed (${frame.messageId.display()}): ${sos.error}")
+            }
+            return RelayDecision.Reject(RejectReason.MALFORMED)
         }
 
         val isDestination = frame.destination == selfId || (isResponder && frame.isSos)
 
         if (isDestination) {
+            if (frame.isSos) {
+                logger?.logEvent(
+                    nodeId = selfId,
+                    event = com.resqmesh.experiment.ExperimentEvent.RX_COMPLETE,
+                    messageKey = frame.messageId.value,
+                    fragIndex = frame.fragIndex,
+                    hop = frame.hopCount,
+                    ttl = frame.ttl,
+                )
+            }
+
             val entity = buildEntity(
                 frame = frame,
                 payload = payload,
@@ -230,7 +238,8 @@ class RelayEngine(
             return RelayDecision.Reject(RejectReason.DUPLICATE)
         }
 
-        if (duplicateGuard.shouldSuppress(frame.messageId, frame.hopCount)) {
+        val isFirstAssembly = stored == null || stored.isReassembly
+        if (!isFirstAssembly && duplicateGuard.shouldSuppress(frame.messageId, frame.hopCount)) {
             messageDao.upsert(
                 buildEntity(
                     frame = frame,

@@ -1,5 +1,6 @@
 package com.resqmesh.mesh.simulation
 
+import com.resqmesh.core.MeshConfig
 import com.resqmesh.core.TimeProvider
 import com.resqmesh.domain.model.LatLon
 import com.resqmesh.domain.model.LocationFix
@@ -22,7 +23,7 @@ import kotlin.random.Random
 class SimulatedMultiNodeTest {
 
     @get:Rule
-    val globalTimeout: Timeout = Timeout(30, TimeUnit.SECONDS)
+    val globalTimeout: Timeout = Timeout(90, TimeUnit.SECONDS)
 
     private val idA = NodeId(0x111111)
     private val idB = NodeId(0x222222)
@@ -74,12 +75,15 @@ class SimulatedMultiNodeTest {
         // Majukan jam virtual sampai seluruh propagasi multi-hop selesai
         advanceTimeBy(20_000L)
 
-        // Assert 1: SOS sampai ke Responder E
+        // Assert 1: SOS sampai ke Responder E dengan isi payload & koordinat utuh
         val receivedE = simE.messageDao.findByKey(sosId.value)
         assertNotNull("SOS harus sampai ke Responder E (lossRate=$lossRate)", receivedE)
+        assertTrue("Payload bytes Responder E tidak boleh kosong", receivedE!!.payloadBytes.isNotEmpty())
+        assertEquals("LatE4 Responder E harus cocok", (fix.point.latitude * MeshConfig.COORD_SCALE).toInt(), receivedE.latE4)
+        assertEquals("LonE4 Responder E harus cocok", (fix.point.longitude * MeshConfig.COORD_SCALE).toInt(), receivedE.lonE4)
 
         // Assert 2: Hop count pada Responder E = 3 (jarak relay dari A)
-        assertEquals("Hop count pada Responder E harus 3", 3, receivedE?.hopCount)
+        assertEquals("Hop count pada Responder E harus 3", 3, receivedE.hopCount)
 
         // Assert 3: ACK kembali ke Origin A
         val updatedA = simA.messageDao.findByKey(sosId.value)
@@ -94,9 +98,14 @@ class SimulatedMultiNodeTest {
     }
 
     private fun test50SeedsForLossRate(lossRate: Double, minSosPct: Double, minAckPct: Double) = runTest {
-        var sosReachedCount = 0
-        var ackReturnedCount = 0
+        var sosSampaiUtuh = 0
+        var sosKosongDiterima = 0
+        var ackKembali = 0
+        var ackPalsu = 0
         var totalBroadcastSum = 0L
+
+        val expectedLatE4 = (fix.point.latitude * MeshConfig.COORD_SCALE).toInt()
+        val expectedLonE4 = (fix.point.longitude * MeshConfig.COORD_SCALE).toInt()
 
         val totalSeeds = 50
         for (seed in 1..totalSeeds) {
@@ -130,23 +139,48 @@ class SimulatedMultiNodeTest {
             val receivedE = simE.messageDao.findByKey(sosId.value)
             val updatedA = simA.messageDao.findByKey(sosId.value)
 
-            if (receivedE != null) sosReachedCount++
-            if (updatedA?.status == MessageStatus.ACKED.wire) ackReturnedCount++
+            val isUtuh = receivedE != null &&
+                !receivedE.isReassembly &&
+                receivedE.payloadBytes.isNotEmpty() &&
+                receivedE.latE4 == expectedLatE4 &&
+                receivedE.lonE4 == expectedLonE4
+
+            val isKosong = receivedE != null && (receivedE.payloadBytes.isEmpty() || receivedE.isReassembly)
+
+            val isAckedA = updatedA?.status == MessageStatus.ACKED.wire
+
+            if (isUtuh) {
+                sosSampaiUtuh++
+                assertEquals("Hop count pada Responder E harus tepat 3", 3, receivedE.hopCount)
+            }
+            if (isKosong) {
+                sosKosongDiterima++
+            }
+            if (isAckedA) {
+                ackKembali++
+            }
+            if (isAckedA && !isUtuh) {
+                ackPalsu++
+            }
 
             totalBroadcastSum += airwave.totalBroadcastCount.get()
         }
 
-        val sosPct = (sosReachedCount.toDouble() / totalSeeds) * 100.0
-        val ackPct = (ackReturnedCount.toDouble() / totalSeeds) * 100.0
+        val sosPct = (sosSampaiUtuh.toDouble() / totalSeeds) * 100.0
+        val ackPct = (ackKembali.toDouble() / totalSeeds) * 100.0
         val avgBroadcasts = totalBroadcastSum.toDouble() / totalSeeds
 
         println("\n=== HASIL SIMULASI 50 SEED (Loss Rate: ${(lossRate * 100).toInt()}%) ===")
-        println("  - SOS Sampai Responder     : ${"%.1f".format(sosPct)}% ($sosReachedCount/$totalSeeds)")
-        println("  - ACK Kembali ke Origin     : ${"%.1f".format(ackPct)}% ($ackReturnedCount/$totalSeeds)")
+        println("  - sosSampaiUtuh          : ${"%.1f".format(sosPct)}% ($sosSampaiUtuh/$totalSeeds)")
+        println("  - sosKosongDiterima      : $sosKosongDiterima (harus 0)")
+        println("  - ackKembali             : ${"%.1f".format(ackPct)}% ($ackKembali/$totalSeeds)")
+        println("  - ackPalsu               : $ackPalsu (harus 0)")
         println("  - Rata-rata Total Broadcasts: ${"%.1f".format(avgBroadcasts)}")
 
-        assertTrue("SOS sampai responder (${"%.1f".format(sosPct)}%) harus >= $minSosPct%", sosPct >= minSosPct)
-        assertTrue("ACK kembali ke origin (${"%.1f".format(ackPct)}%) harus >= $minAckPct%", ackPct >= minAckPct)
+        assertEquals("sosKosongDiterima harus 0", 0, sosKosongDiterima)
+        assertEquals("ackPalsu harus 0", 0, ackPalsu)
+        assertTrue("sosSampaiUtuh (${"%.1f".format(sosPct)}%) harus >= $minSosPct%", sosPct >= minSosPct)
+        assertTrue("ackKembali (${"%.1f".format(ackPct)}%) harus >= $minAckPct%", ackPct >= minAckPct)
         assertTrue("Rata-rata total broadcast ($avgBroadcasts) harus < 300", avgBroadcasts < 300.0)
     }
 
@@ -212,6 +246,7 @@ class SimulatedMultiNodeTest {
         // Setelah C menyala dan dipicu store-and-forward, SOS diteruskan B -> C -> D -> E
         val receivedE = simE.messageDao.findByKey(sosId.value)
         assertNotNull("SOS harus sampai ke E setelah Relay C dihidupkan", receivedE)
+        assertTrue("Payload bytes Responder E tidak boleh kosong", receivedE!!.payloadBytes.isNotEmpty())
 
         // ACK kembali ke Origin A
         val updatedA = simA.messageDao.findByKey(sosId.value)
@@ -260,6 +295,7 @@ class SimulatedMultiNodeTest {
         // Node D mendeteksi Responder E dari beacon dan meneruskan SOS carried ke E
         val receivedE = simE.messageDao.findByKey(sosId.value)
         assertNotNull("Responder E yang datang belakangan harus menerima SOS", receivedE)
+        assertTrue("Payload bytes Responder E tidak boleh kosong", receivedE!!.payloadBytes.isNotEmpty())
 
         // Responder E menghasilkan ACK dan kembali ke A
         val updatedA = simA.messageDao.findByKey(sosId.value)

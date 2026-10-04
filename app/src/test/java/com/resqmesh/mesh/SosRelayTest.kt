@@ -241,7 +241,7 @@ class SosRelayTest {
     }
 
     @Test
-    fun `payload rusak tidak hilang tapi ditandai`() = runTest {
+    fun `payload rusak ditolak sebagai malformed dan tidak memicu ack`() = runTest {
         val broken = MeshFrame(
             messageId = incidentId,
             destination = NodeId.BROADCAST_ID,
@@ -254,12 +254,10 @@ class SosRelayTest {
             payloadChunk = ByteArray(6),
         )
 
-        engine.onFrame(broken, peer = Peer.ADVERTISING, rssi = -55)
-
+        val decision = engine.onFrame(broken, peer = Peer.ADVERTISING, rssi = -55)
+        assertEquals(RelayDecision.Reject(RejectReason.MALFORMED), decision)
         val row = messages.rows[incidentId.value]
-        assertNotNull("Pesan harus tetap tersimpan", row)
-        assertNotNull("Baris harus menandai kegagalan decode", row?.lastError)
-        assertNull(row?.latE4)
+        assertNull("Baris malformed tidak disimpan sebagai DELIVERED", row?.deliveredAt)
     }
 
     @Test
@@ -294,5 +292,24 @@ class SosRelayTest {
     @Test
     fun `grup baris kosong tidak menghasilkan insiden`() {
         assertTrue(emptyList<MessageEntity>().toSosIncidents().isEmpty())
+    }
+
+    @Test
+    fun `tes_relay_sebagian_fragmen_tidak_memancarkan_sos_kosong_saat_carry`() = runTest {
+        val frames = locFrames()
+        assertEquals(2, frames.size)
+
+        // Relay hanya menerima Fragmen 0 (Fragmen 1 hilang di udara)
+        val decision = engine.onFrame(frames.first(), peer = Peer.ADVERTISING, rssi = -55)
+        assertEquals(RelayDecision.Ignore, decision)
+
+        val row = messages.rows[incidentId.value]
+        assertNotNull("Baris reassembly harus ada", row)
+        assertTrue("Baris reassembly harus ditandai isReassembly = true", row!!.isReassembly)
+        assertTrue("Payload bytes reassembly harus kosong", row.payloadBytes.isEmpty())
+
+        // Pastikan activeCarriedSosMessages memfilter baris isReassembly
+        val carried = messages.activeCarriedSosMessages(self.value, cutoff = 0L)
+        assertTrue("Baris perakitan yang belum lengkap tidak boleh muncul di activeCarriedSosMessages", carried.isEmpty())
     }
 }

@@ -31,7 +31,7 @@ object MeshConfig {
     const val SOS_CARRY_RETENTION_MS = 30 * 60 * 1000L
 
     // ACK Resend & Forward Policy
-    const val ACK_REFORWARD_MIN_INTERVAL_MS = 3_000L
+    const val ACK_REFORWARD_MIN_INTERVAL_MS = 2_000L
     const val RESPONDER_ACK_RESEND_MIN_INTERVAL_MS = 3_000L
     const val ACK_FORWARD_LIMIT = 4
 
