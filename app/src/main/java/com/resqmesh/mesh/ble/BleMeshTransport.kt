@@ -6,6 +6,9 @@ import android.bluetooth.BluetoothManager
 import android.bluetooth.le.AdvertiseCallback
 import android.bluetooth.le.AdvertiseData
 import android.bluetooth.le.AdvertiseSettings
+import android.bluetooth.le.AdvertisingSet
+import android.bluetooth.le.AdvertisingSetCallback
+import android.bluetooth.le.AdvertisingSetParameters
 import android.bluetooth.le.BluetoothLeAdvertiser
 import android.bluetooth.le.BluetoothLeScanner
 import android.bluetooth.le.ScanCallback
@@ -20,6 +23,21 @@ import com.resqmesh.domain.model.FrameType
 import com.resqmesh.domain.model.MeshFrame
 import com.resqmesh.domain.model.NodeId
 import com.resqmesh.mesh.MeshTransport
+
+/*
+ * ASUMSI HEADER BLE ADVERTISING & BUDGET PAYLOAD 27 BYTE:
+ * 1. PDU Advertising BLE Legacy memiliki kapasitas payload maksimum 31 byte.
+ * 2. Menambahkan Manufacturer Specific Data (0xFF) menambahkan 3 byte header PDU:
+ *    - Length (1 byte)
+ *    - AD Type 0xFF (1 byte)
+ *    - Company ID (2 byte, e.g. 0xE000)
+ * 3. Dengan payload ResQMesh dikunci tepat pada 27 byte, total PDU adalah 3+2+27 = 32 byte.
+ *    Beberapa controller Bluetooth BLE legacy menyisipkan Flags AD Type (3 byte), sehingga total
+ *    melebihi 31 byte jika Flags diikutsertakan.
+ * 4. setConnectable(false), setIncludeDeviceName(false), dan setIncludeTxPowerLevel(false)
+ *    dijaga tetap false agar budget payload 27 byte muat di PDU BLE tanpa terpotong.
+ *    [PERLU DIUJI PER PERANGKAT] — perilaku ini bervariasi antar chipset Bluetooth (Qualcomm, MediaTek, Exynos).
+ */
 
 /**
  * Transport BLE sungguhan untuk ResQMesh.
@@ -39,12 +57,18 @@ class BleMeshTransport(
 
     private var scanner: BluetoothLeScanner? = null
     private var advertiser: BluetoothLeAdvertiser? = null
+    private var activeAdvertisingSet: AdvertisingSet? = null
 
     private var onFrameCallback: ((MeshFrame, Int) -> Unit)? = null
     private var onBeaconCallback: ((ByteArray, Int) -> Unit)? = null
 
     @Volatile
     private var isRunning = false
+
+    // Variabel diagnostik & timing
+    private var lastAdvertiseTimeMs = 0L
+    private var advertiseSuccessCount = 0L
+    private var advertiseFailureCount = 0L
 
     private val scanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult?) {
@@ -71,13 +95,68 @@ class BleMeshTransport(
         }
     }
 
+    // Callback Diagnostik Legacy Advertising
     private val advertiseCallback = object : AdvertiseCallback() {
         override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
-            Log.d(TAG, "BLE Advertising aktif")
+            val now = System.currentTimeMillis()
+            val intervalMs = if (lastAdvertiseTimeMs > 0) now - lastAdvertiseTimeMs else 0
+            lastAdvertiseTimeMs = now
+            advertiseSuccessCount++
+            Log.d(
+                TAG,
+                "BLE Advertising Legacy sukses | Selang waktu aktual: ${intervalMs}ms | Total sukses: $advertiseSuccessCount",
+            )
         }
 
         override fun onStartFailure(errorCode: Int) {
-            Log.e(TAG, "BLE Advertising gagal, error code: $errorCode")
+            advertiseFailureCount++
+            Log.e(
+                TAG,
+                "BLE Advertising Legacy gagal [Code $errorCode: ${describeAdvertiseError(errorCode)}] | Total gagal: $advertiseFailureCount",
+            )
+        }
+    }
+
+    // Callback Diagnostik AdvertisingSet (API 26+)
+    private val advertisingSetCallback = object : AdvertisingSetCallback() {
+        override fun onAdvertisingSetStarted(
+            advertisingSet: AdvertisingSet?,
+            txPower: Int,
+            status: Int,
+        ) {
+            if (status == ADVERTISE_SUCCESS) {
+                activeAdvertisingSet = advertisingSet
+                val now = System.currentTimeMillis()
+                val intervalMs = if (lastAdvertiseTimeMs > 0) now - lastAdvertiseTimeMs else 0
+                lastAdvertiseTimeMs = now
+                advertiseSuccessCount++
+                Log.d(
+                    TAG,
+                    "BLE AdvertisingSet aktif (txPower=$txPower) | Selang waktu aktual: ${intervalMs}ms | Total sukses: $advertiseSuccessCount",
+                )
+            } else {
+                activeAdvertisingSet = null
+                advertiseFailureCount++
+                Log.e(
+                    TAG,
+                    "BLE AdvertisingSet gagal dimulai [Status $status] | Total gagal: $advertiseFailureCount",
+                )
+            }
+        }
+
+        override fun onAdvertisingDataSet(advertisingSet: AdvertisingSet?, status: Int) {
+            if (status == ADVERTISE_SUCCESS) {
+                val now = System.currentTimeMillis()
+                val intervalMs = if (lastAdvertiseTimeMs > 0) now - lastAdvertiseTimeMs else 0
+                lastAdvertiseTimeMs = now
+                advertiseSuccessCount++
+                Log.d(
+                    TAG,
+                    "BLE AdvertisingSet payload berhasil diperbarui tanpa stop/start | Selang waktu aktual: ${intervalMs}ms | Total sukses: $advertiseSuccessCount",
+                )
+            } else {
+                Log.e(TAG, "BLE AdvertisingSet gagal memperbarui payload [Status $status]")
+            }
         }
     }
 
@@ -126,6 +205,24 @@ class BleMeshTransport(
             return
         }
 
+        val frameType = payload.getOrNull(1)?.let { FrameType.fromCode(it.toInt() and 0xFF) } ?: FrameType.UNKNOWN
+        val modeLabel = if (MeshConfig.USE_BLE_ADVERTISING_SET) "AdvertisingSet (API 26+)" else "Legacy"
+        Log.d(
+            TAG,
+            "Mempersiapkan pancaran BLE payload (${payload.size} byte, type=$frameType, mode=$modeLabel)",
+        )
+
+        val data = buildAdvertiseData(payload)
+
+        if (MeshConfig.USE_BLE_ADVERTISING_SET) {
+            advertiseSet(leAdvertiser, data)
+        } else {
+            advertiseLegacy(leAdvertiser, data)
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun advertiseLegacy(leAdvertiser: BluetoothLeAdvertiser, data: AdvertiseData) {
         stopAdvertising()
 
         val settings = AdvertiseSettings.Builder()
@@ -135,21 +232,63 @@ class BleMeshTransport(
             .setTimeout(0)
             .build()
 
-        val data = AdvertiseData.Builder()
+        runCatching {
+            leAdvertiser.startAdvertising(settings, data, advertiseCallback)
+        }.onFailure { e ->
+            Log.e(TAG, "Gagal memulai BLE advertising legacy: ${e.message}", e)
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun advertiseSet(leAdvertiser: BluetoothLeAdvertiser, data: AdvertiseData) {
+        val activeSet = activeAdvertisingSet
+        if (activeSet != null) {
+            runCatching {
+                activeSet.setAdvertisingData(data)
+            }.onFailure { e ->
+                Log.e(TAG, "Gagal memperbarui payload AdvertisingSet: ${e.message}, mencoba restart set", e)
+                stopAdvertising()
+                startNewAdvertisingSet(leAdvertiser, data)
+            }
+        } else {
+            startNewAdvertisingSet(leAdvertiser, data)
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun startNewAdvertisingSet(leAdvertiser: BluetoothLeAdvertiser, data: AdvertiseData) {
+        val parameters = AdvertisingSetParameters.Builder()
+            .setLegacyMode(true)
+            .setConnectable(false)
+            .setTxPowerLevel(AdvertisingSetParameters.TX_POWER_HIGH)
+            .setInterval(AdvertisingSetParameters.INTERVAL_LOW)
+            .build()
+
+        runCatching {
+            leAdvertiser.startAdvertisingSet(
+                parameters,
+                data,
+                null,
+                null,
+                null,
+                advertisingSetCallback,
+            )
+        }.onFailure { e ->
+            Log.e(TAG, "Gagal memutus/memulai AdvertisingSet baru: ${e.message}", e)
+        }
+    }
+
+    private fun buildAdvertiseData(payload: ByteArray): AdvertiseData =
+        AdvertiseData.Builder()
             .addManufacturerData(MeshConfig.COMPANY_ID, payload)
             .setIncludeDeviceName(false)
             .setIncludeTxPowerLevel(false)
             .build()
 
-        runCatching {
-            leAdvertiser.startAdvertising(settings, data, advertiseCallback)
-        }.onFailure { e ->
-            Log.e(TAG, "Gagal memulai BLE advertising: ${e.message}", e)
-        }
-    }
-
     override fun sendOverLink(peerId: NodeId, frames: List<MeshFrame>) {
-        // Tier 2 Direct Link (GATT)
+        // TODO(not implemented): Tier 2 Direct GATT Link belum diimplementasikan.
+        // Komunikasi multi-hop saat ini sepenuhnya mengandalkan Tier 1 BLE Advertising store-and-forward.
+        Log.d(TAG, "sendOverLink dipanggil untuk $peerId dengan ${frames.size} frame - TODO(not implemented)")
     }
 
     override fun connectedPeers(): Set<NodeId> = emptySet()
@@ -197,6 +336,10 @@ class BleMeshTransport(
         runCatching {
             advertiser?.stopAdvertising(advertiseCallback)
         }
+        runCatching {
+            advertiser?.stopAdvertisingSet(advertisingSetCallback)
+        }
+        activeAdvertisingSet = null
     }
 
     private fun processPayload(payload: ByteArray, rssi: Int) {
@@ -235,6 +378,15 @@ class BleMeshTransport(
             offset += length + 1
         }
         return null
+    }
+
+    private fun describeAdvertiseError(errorCode: Int): String = when (errorCode) {
+        AdvertiseCallback.ADVERTISE_FAILED_DATA_TOO_LARGE -> "DATA_TOO_LARGE (1)"
+        AdvertiseCallback.ADVERTISE_FAILED_TOO_MANY_ADVERTISERS -> "TOO_MANY_ADVERTISERS (2)"
+        AdvertiseCallback.ADVERTISE_FAILED_ALREADY_STARTED -> "ALREADY_STARTED (3)"
+        AdvertiseCallback.ADVERTISE_FAILED_INTERNAL_ERROR -> "INTERNAL_ERROR (4)"
+        AdvertiseCallback.ADVERTISE_FAILED_FEATURE_UNSUPPORTED -> "FEATURE_UNSUPPORTED (5)"
+        else -> "UNKNOWN_ERROR ($errorCode)"
     }
 
     companion object {

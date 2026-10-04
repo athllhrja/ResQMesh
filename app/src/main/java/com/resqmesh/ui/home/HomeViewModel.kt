@@ -53,6 +53,8 @@ data class HomeUiState(
     val neighborCount: Int = 0,
     val pendingCount: Int = 0,
     val phase: MeshState.Phase = MeshState.Phase.STOPPED,
+    val isSosActive: Boolean = false,
+    val isResponder: Boolean = false,
     val ttl: Int = MeshConfig.DEFAULT_TTL,
     val isSosDialogVisible: Boolean = false,
     val error: String? = null,
@@ -71,23 +73,26 @@ class HomeViewModel(
     private val sosDialog = MutableStateFlow(false)
     private val error = MutableStateFlow<String?>(null)
     private val sos = MutableStateFlow(SosComposer())
+    private val isResponderState = MutableStateFlow(repository.isResponder())
 
     private val header = combine(
         repository.observeSelf(),
         repository.observeMeshState(),
         repository.observePendingForwardCount(),
-    ) { self, mesh, pending ->
-        Triple(self, mesh, pending)
+        isResponderState,
+    ) { self, mesh, pending, responder ->
+        Tuple4(self, mesh, pending, responder)
     }
 
     val uiState: StateFlow<HomeUiState> =
-        combine(header, ttl, sosDialog, error, sos) { header, ttlValue, dialog, errorValue, composer ->
-            val (self, mesh, pending) = header
+        combine(header, ttl, sosDialog, error, sos) { headerTuple, ttlValue, dialog, errorValue, composer ->
             HomeUiState(
-                self = self,
-                neighborCount = mesh.neighborCount,
-                pendingCount = pending,
-                phase = mesh.phase,
+                self = headerTuple.self,
+                neighborCount = headerTuple.mesh.neighborCount,
+                pendingCount = headerTuple.pending,
+                phase = headerTuple.mesh.phase,
+                isSosActive = headerTuple.mesh.isSosActive,
+                isResponder = headerTuple.responder,
                 ttl = ttlValue,
                 isSosDialogVisible = dialog,
                 error = errorValue,
@@ -98,6 +103,12 @@ class HomeViewModel(
             started = SharingStarted.WhileSubscribed(5_000),
             initialValue = HomeUiState(),
         )
+
+    fun toggleResponderMode() {
+        val next = !isResponderState.value
+        repository.setResponder(next)
+        isResponderState.value = next
+    }
 
     fun setTtl(value: Int) {
         ttl.value = value.coerceIn(1, MeshConfig.MAX_TTL)
@@ -183,6 +194,16 @@ class HomeViewModel(
         }
     }
 
+    fun cancelSos() {
+        viewModelScope.launch {
+            runCatching {
+                repository.cancelSelfSos()
+            }.onFailure {
+                error.value = it.message
+            }
+        }
+    }
+
     fun clearError() {
         error.value = null
     }
@@ -200,3 +221,10 @@ class HomeViewModel(
             }
     }
 }
+
+private data class Tuple4<A, B, C, D>(
+    val self: A,
+    val mesh: B,
+    val pending: C,
+    val responder: D,
+)

@@ -1,5 +1,7 @@
 package com.resqmesh.ui.home
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -27,6 +29,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -35,6 +38,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.resqmesh.R
 import com.resqmesh.core.MeshConfig
 import com.resqmesh.domain.model.MeshState
+import com.resqmesh.service.MeshService
+import com.resqmesh.ui.MeshPermissions
 import com.resqmesh.ui.components.SosComposerDialog
 import com.resqmesh.ui.components.StatusDot
 
@@ -45,12 +50,13 @@ fun HomeScreen(
     onOpenNodes: () -> Unit,
     onOpenHistory: () -> Unit,
     onOpenAlerts: () -> Unit,
+    onOpenExperiment: () -> Unit,
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
 
-    val locationPermissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-        contract = androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions()
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions(),
     ) { permissions ->
         val granted = permissions.values.any { it }
         if (granted) {
@@ -58,11 +64,31 @@ fun HomeScreen(
         }
     }
 
+    val servicePermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions(),
+    ) { _ ->
+        if (MeshPermissions.canStartService(context)) {
+            MeshService.start(context)
+        }
+    }
+
+    val handleStartMesh = {
+        if (MeshPermissions.canStartService(context)) {
+            MeshService.start(context)
+        } else {
+            servicePermissionLauncher.launch(MeshPermissions.servicePermissions)
+        }
+    }
+
+    val handleStopMesh = {
+        MeshService.stop(context)
+    }
+
     val handleRetryLocation = {
-        if (com.resqmesh.ui.MeshPermissions.hasLocation(context)) {
+        if (MeshPermissions.hasLocation(context)) {
             viewModel.resolveLocation()
         } else {
-            locationPermissionLauncher.launch(com.resqmesh.ui.MeshPermissions.locationPermissions)
+            locationPermissionLauncher.launch(MeshPermissions.locationPermissions)
         }
     }
 
@@ -81,9 +107,12 @@ fun HomeScreen(
         HomeContent(
             state = state,
             viewModel = viewModel,
+            onStartMesh = handleStartMesh,
+            onStopMesh = handleStopMesh,
             onOpenNodes = onOpenNodes,
             onOpenHistory = onOpenHistory,
             onOpenAlerts = onOpenAlerts,
+            onOpenExperiment = onOpenExperiment,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),
@@ -108,9 +137,12 @@ fun HomeScreen(
 private fun HomeContent(
     state: HomeUiState,
     viewModel: HomeViewModel,
+    onStartMesh: () -> Unit,
+    onStopMesh: () -> Unit,
     onOpenNodes: () -> Unit,
     onOpenHistory: () -> Unit,
     onOpenAlerts: () -> Unit,
+    onOpenExperiment: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -144,6 +176,48 @@ private fun HomeContent(
                         state.pendingCount.toString(),
                     )
                 }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(
+                        text = stringResource(R.string.home_mode_label),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    FilterChip(
+                        selected = state.isResponder,
+                        onClick = viewModel::toggleResponderMode,
+                        label = {
+                            Text(
+                                if (state.isResponder) {
+                                    stringResource(R.string.home_mode_responder)
+                                } else {
+                                    stringResource(R.string.home_mode_warga)
+                                },
+                            )
+                        },
+                    )
+                }
+
+                Spacer(Modifier.height(4.dp))
+
+                if (state.phase == MeshState.Phase.STOPPED) {
+                    Button(
+                        onClick = onStartMesh,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(stringResource(R.string.home_start_mesh))
+                    }
+                } else {
+                    OutlinedButton(
+                        onClick = onStopMesh,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(stringResource(R.string.home_stop_mesh))
+                    }
+                }
             }
         }
 
@@ -166,6 +240,21 @@ private fun HomeContent(
             )
         }
 
+        if (state.isSosActive) {
+            OutlinedButton(
+                onClick = viewModel::cancelSos,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = MaterialTheme.colorScheme.error,
+                ),
+            ) {
+                Text(
+                    text = stringResource(R.string.home_sos_cancel),
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        }
+
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -180,6 +269,10 @@ private fun HomeContent(
 
         OutlinedButton(onClick = onOpenAlerts, modifier = Modifier.fillMaxWidth()) {
             Text(stringResource(R.string.sos_alerts_title))
+        }
+
+        OutlinedButton(onClick = onOpenExperiment, modifier = Modifier.fillMaxWidth()) {
+            Text(stringResource(R.string.experiment_title))
         }
 
         state.error?.let { message ->

@@ -32,6 +32,7 @@ import com.resqmesh.mesh.MeshTransport
 import com.resqmesh.mesh.NoOpMeshTransport
 import com.resqmesh.mesh.PeerLinkRegistry
 import com.resqmesh.mesh.RelayEngine
+import com.resqmesh.mesh.StoreAndForwardQueue
 import com.resqmesh.mesh.TtlPolicy
 import com.resqmesh.mesh.ble.BleMeshTransport
 import kotlinx.coroutines.CoroutineName
@@ -39,6 +40,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 
 class AppGraph(context: Context) {
@@ -79,9 +81,15 @@ class AppGraph(context: Context) {
         )
     }
 
+    val experimentLogger: com.resqmesh.experiment.ExperimentLogger by lazy {
+        com.resqmesh.experiment.ExperimentLogger(appContext)
+    }
+
     private val assembler: FragmentAssembler by lazy { FragmentAssembler(clock) }
     private val duplicateGuard: DuplicateGuard by lazy { DuplicateGuard(seenDao, seenFrameDao, clock) }
-    private val ackTracker: AckTracker by lazy { AckTracker(selfId, messageDao, hopDao, clock) }
+    private val ackTracker: AckTracker by lazy {
+        AckTracker(selfId, messageDao, hopDao, clock, experimentLogger)
+    }
 
     val relayEngine: RelayEngine by lazy {
         RelayEngine(
@@ -94,6 +102,17 @@ class AppGraph(context: Context) {
             hopDao = hopDao,
             nodeDao = nodeDao,
             clock = clock,
+            logger = experimentLogger,
+        )
+    }
+
+    val storeAndForwardQueue: StoreAndForwardQueue by lazy {
+        StoreAndForwardQueue(
+            messageDao = messageDao,
+            seenDao = seenDao,
+            meshManager = meshManager,
+            clock = clock,
+            scope = scope,
         )
     }
 
@@ -110,12 +129,16 @@ class AppGraph(context: Context) {
             transport = transport,
             scheduler = scheduler,
             forwardingPolicy = ForwardingPolicy(peerLinks),
-        )
+            logger = experimentLogger,
+        ).also { manager ->
+            manager.storeAndForwardQueue = storeAndForwardQueue
+        }
     }
 
     val repository: MeshRepository by lazy {
         DefaultMeshRepository(
             manager = meshManager,
+            storeAndForwardQueue = storeAndForwardQueue,
             nodeDao = nodeDao,
             messageDao = messageDao,
             seenDao = seenDao,
@@ -126,24 +149,29 @@ class AppGraph(context: Context) {
     /** Persentase baterai untuk beacon dan SOS_LOC. Null bila tidak dilaporkan. */
     fun readBattery(): Int? = BatteryReader.read(appContext)
 
-    fun ensureSelfNode() {        runBlocking {
-            val now = clock.now()
-            nodeDao.upsert(
-                NodeEntity(
-                    nodeId = selfId.value,
-                    displayName = selfId.toString(),
-                    statusFlags = NodeStatusFlags.MESH_ACTIVE or NodeStatusFlags.SCANNING,
-                    batteryPct = -1,
-                    pendingCount = 0,
-                    gattPeerCount = 0,
-                    defaultTtl = MeshConfig.DEFAULT_TTL,
-                    nodeSeq = 0,
-                    rssi = SignalStrength.RSSI_NONE,
-                    isSelf = true,
-                    firstSeenAt = now,
-                    lastSeenAt = now,
-                ),
-            )
+    fun ensureSelfNode() {
+        scope.launch(Dispatchers.IO) {
+            runCatching {
+                val now = clock.now()
+                nodeDao.upsert(
+                    NodeEntity(
+                        nodeId = selfId.value,
+                        displayName = selfId.toString(),
+                        statusFlags = NodeStatusFlags.MESH_ACTIVE or NodeStatusFlags.SCANNING,
+                        batteryPct = -1,
+                        pendingCount = 0,
+                        gattPeerCount = 0,
+                        defaultTtl = MeshConfig.DEFAULT_TTL,
+                        nodeSeq = 0,
+                        rssi = SignalStrength.RSSI_NONE,
+                        isSelf = true,
+                        firstSeenAt = now,
+                        lastSeenAt = now,
+                    ),
+                )
+            }.onFailure { e ->
+                android.util.Log.e("AppGraph", "Gagal memastikan self node: ${e.message}", e)
+            }
         }
     }
 

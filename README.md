@@ -1,14 +1,14 @@
-# ResQMesh: Protokol Routing Mesh P2P Berbasis BLE untuk Komunikasi Darurat Tanpa Internet
+# Rancang Bangun ResQMesh: Sistem Komunikasi SOS Darurat Offline Berbasis Store-and-Forward Multi-Hop BLE untuk Situasi Bencana
 
 Proyek penelitian rekayasa perangkat lunak dan jaringan komunikasi darurat (*Delay-Tolerant Mobile Ad-Hoc Network / DTN-MANET*) untuk menyebarkan sinyal darurat (SOS) berisi koordinat lokasi dan informasi keadaan secara *device-to-device* (*peer-to-peer*) melalui perangkat seluler di sekitar tanpa memerlukan infrastruktur seluler atau internet.
 
 ---
 
-## 1. Status Implementasi & Kesiapan Eksperimen Lapangan (Field-Ready Baseline)
+## 1. Status Implementasi & Kesiapan Eksperimen Lapangan
 
 - **Platform & Teknologi:** Android (Kotlin, Jetpack Compose, Room Database, Android BLE API / `BluetoothLeScanner` & `BluetoothLeAdvertiser`).
-- **Penyelesaian Logika Protokol (F1 – F12):** Seluruh fitur inti (Alokasi Node ID 24-bit, Device Discovery BLE, Pengambilan Snapshot Lokasi, Pembuatan SOS Dua-Rantai, Multi-Hop Relay, Duplicate Detection, TTL Enforcement, Hop Count Tracking, Lifecycle Status, ACK Propagation, Local History, dan Store-and-Forward Buffer) telah selesai diimplementasikan dan diverifikasi melalui **85+ unit test pengujian otomatis JVM**.
-- **Integrasi Transport Hardware Native:** Lapisan transport telah terhubung secara penuh ke driver perangkat keras native melalui `BleMeshTransport` (Company ID `0xE000`, struktur payload biner 27-byte), menggantikan `NoOpMeshTransport` demi beralih dari fase simulasi in-memory menuju fase eksperimen validasi perangkat fisik (*field testing*).
+- **Penyelesaian Logika Protokol (F1 – F12):** Seluruh fitur inti (Alokasi Node ID 24-bit, Device Discovery BLE, Pengambilan Snapshot Lokasi, Pembuatan SOS Dua-Rantai, Multi-Hop Relay, Duplicate Detection, TTL Enforcement, Hop Count Tracking, Lifecycle Status, Broadcast SOS ACK & Responder Role, Local History, dan Store-and-Forward Buffer) telah selesai diimplementasikan dan diverifikasi melalui **100+ unit test pengujian otomatis JVM**.
+- **Integrasi Transport Hardware Native:** Lapisan transport telah terhubung secara penuh ke driver perangkat keras native melalui `BleMeshTransport` (Company ID `0xFFFF`, struktur payload biner 27-byte), mengoperasikan Foreground Service (`connectedDevice`) demi menjamin jaringan mesh tetap berjalan di latar belakang.
 
 ---
 
@@ -17,10 +17,10 @@ Proyek penelitian rekayasa perangkat lunak dan jaringan komunikasi darurat (*Del
 Dalam rangka pengujian prototipe untuk Karya Tulis Ilmiah (KTI), variabel unjuk kerja (*performance evaluation metrics*) utama yang diamati meliputi:
 
 1. **Packet Delivery Ratio (PDR):** Rasio keberhasilan paket SOS diterima oleh node responder atau perantara terhadap total paket yang disiarkan dalam berbagai skenario topologi.
-2. **End-to-End Latency:** Waktu tunda total (*delay*) sejak tombol SOS ditekan di perangkat asal (*origin*) hingga paket darurat diterima dan dikonfirmasi (*DELIVERED*) melalui ACK oleh responder.
-3. **Hop Count Verification:** Keakuratan inkremental hop (*F8*) dalam mencerminkan jarak topologi jaringan multi-hop secara riil.
-4. **Location Integrity:** Keutuhan dan presisi data koordinat (*snapshot latitude, longitude, accuracy*) selama proses estafet data melintasi simpul perantara (*F3* & *F5*).
-5. **Resilience & Fault Tolerance:** Ketahanan jaringan (*resilience*) terhadap kegagalan node (*node failure*) atau pergerakan node di luar jangkauan menggunakan mekanisme *Store-and-Forward* (*F12*).
+2. **Round-Trip Time (RTT):** Waktu tunda total (*delay*) sejak tombol SOS ditekan di perangkat asal (*origin*) hingga paket darurat diterima dan dikonfirmasi (*DELIVERED*) melalui ACK oleh responder pada jam tunggal HP Origin.
+3. **Hop Count Verification:** Keakuratan inkremental hop dalam mencerminkan jarak topologi jaringan multi-hop secara riil.
+4. **Location Integrity:** Keutuhan dan presisi data koordinat (*snapshot latitude, longitude, accuracy*) selama proses estafet data melintasi simpul perantara ($1/10.000$ derajat desimal / ~11 m di lintang).
+5. **Resilience & Fault Tolerance:** Ketahanan jaringan (*resilience*) terhadap kegagalan node (*node failure*) atau pergerakan node di luar jangkauan menggunakan mekanisme *Store-and-Forward* & *Relay Carry*.
 
 ---
 
@@ -33,11 +33,19 @@ Ponsel Korban (Origin) → Simpul Perantara (Relay Node) → Simpul Responder (G
 ```
 
 - **Struktur Paket Dua-Rantai (*Two-Tier SOS Chain*):** Mengatasi batasan ukuran paket BLE dengan memecah informasi darurat menjadi dua pesan berantai (`SOS_LOC` 16-byte untuk koordinat kilat dan `SOS_DETAIL` 7-byte header + teks catatan darurat).
-- **Manajemen Router & Relay:** Setiap simpul perantara mempertahankan identitas sumber (*origin sender*) dan `message_id` asli, menerapkan dekrementasi TTL (*F7*), inkrementasi hop (*F8*), serta pencegahan duplikasi atomik (*F6*).
+- **Manajemen Router & Relay:** Setiap simpul perantara mempertahankan identitas sumber (*origin sender*) dan `message_id` asli, menerapkan dekrementasi TTL, inkrementasi hop, serta pencegahan duplikasi atomik (`DuplicateGuard`).
 
 ---
 
-## 4. Panduan Menjalankan & Pengujian
+## 4. Batasan dan Model Ancaman (Limitations and Threat Model)
+
+1. **SOS/ACK Bisa Dipalsukan (Tanpa Autentikasi & Anti-Spoofing)**: Frame dikirimkan tanpa enkripsi kriptografi atau tanda tangan digital (*digital signature*). Perangkat jahat dapat memalsukan frame SOS/ACK milik Node ID lain.
+2. **Lokasi Disiarkan Tanpa Enkripsi (Unencrypted Plaintext Broadcast)**: Koordinat GPS ($1/10.000$ derajat) dan teks catatan disiarkan secara terbuka di udara BLE agar seluruh penolong dapat membacanya secara instan tanpa hambatan tukar kunci.
+3. **Tidak Ada Verifikasi Identitas Pemilik HP (Unauthenticated Node Identity)**: Node ID 24-bit dialokasikan secara acak tanpa terhubung ke sistem identitas fisik terpusat.
+
+---
+
+## 5. Panduan Menjalankan & Pengujian
 
 1. **Prasyarat Sistem:**
    - Android Studio (Electric Eel / Iguana atau versi terbaru).
@@ -52,10 +60,9 @@ Ponsel Korban (Origin) → Simpul Perantara (Relay Node) → Simpul Responder (G
 
 ---
 
-## 5. Dokumentasi Referensi Penelitian
+## 6. Dokumentasi Referensi Penelitian
 
 Spesifikasi teknis, rincian protokol biner, dan pemetaan kebutuhan dikelola secara ketat melalui dokumen acuan resmi:
-- [`ResQMesh_PRD_v3.md`](ResQMesh_PRD_v3.md) — Acuan spesifikasi target pengujian fisik (*field-ready baseline*).
-- [`ResQMesh_PRD_v2.md`](ResQMesh_PRD_v2.md) — Dokumen transisi kebutuhan produk.
-- [`ResQMesh_PRD.md`](ResQMesh_PRD.md) — Spesifikasi PRD versi awal (*historis*).
-- [`ResQMesh_Technical_Specification.md`](ResQMesh_Technical_Specification.md) — Spesifikasi arsitektur teknis mendalam dan pemetaan desain biner.
+- [`docs/IMPLEMENTATION_STATUS.md`](docs/IMPLEMENTATION_STATUS.md) — Acuan status implementasi fitur F1–F12 dan kesiapan eksperimen.
+- [`docs/TECHNICAL_SPECIFICATION.md`](docs/TECHNICAL_SPECIFICATION.md) — Spesifikasi arsitektur teknis mendalam dan pemetaan desain biner 27-byte.
+- [`docs/archive/`](docs/archive/) — Arsip historis PRD versi awal.

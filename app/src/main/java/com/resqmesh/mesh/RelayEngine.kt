@@ -53,14 +53,28 @@ class RelayEngine(
     private val hopDao: MessageHopDao,
     private val nodeDao: NodeDao,
     private val clock: TimeProvider,
+    private val logger: com.resqmesh.experiment.ExperimentLogger? = null,
 ) {
+
+    @Volatile var isResponder: Boolean = false
 
     suspend fun onFrame(frame: MeshFrame, peer: Peer, rssi: Int): RelayDecision {
         val now = clock.now()
 
+        logger?.logEvent(
+            nodeId = selfId,
+            event = if (frame.isAck) com.resqmesh.experiment.ExperimentEvent.ACK_RX else com.resqmesh.experiment.ExperimentEvent.RX,
+            messageKey = frame.messageId.value,
+            fragIndex = frame.fragIndex,
+            hop = frame.hopCount,
+            ttl = frame.ttl,
+            rssi = rssi,
+        )
+
         // ACK harus diperiksa lebih dulu: frame-nya memakai messageId pesan
         // asli, jadi origin-nya adalah pengirim, bukan node kita.
         if (frame.isAck) {
+            messageDao.markAckedForIncident(frame.messageId.value)
             if (frame.messageId.origin == selfId) {
                 ackTracker.onAck(frame.messageId)
                 return RelayDecision.Ignore
@@ -72,14 +86,31 @@ class RelayEngine(
             if (frame.destination == selfId) {
                 return RelayDecision.Ignore
             }
+            val verdict = duplicateGuard.registerFrame(
+                id = frame.messageId,
+                fragIndex = 0,
+                hop = frame.hopCount,
+                isAck = true,
+            )
+            if (verdict is FrameVerdict.Repeated) {
+                return RelayDecision.Reject(RejectReason.DUPLICATE)
+            }
             if (!ttlPolicy.shouldForward(frame.ttl, frame.hopCount, frame.inferredInitialTtl())) {
                 return RelayDecision.Reject(RejectReason.TTL_EXPIRED)
             }
             val nextTtl = ttlPolicy.nextTtl(frame.ttl)
             val nextHop = ttlPolicy.nextHop(frame.hopCount)
-            return RelayDecision.Relayed(
-                listOf(frame.forwarded(nextTtl = nextTtl, nextHop = nextHop)),
+            val forwardedAck = frame.forwarded(nextTtl = nextTtl, nextHop = nextHop)
+            logger?.logEvent(
+                nodeId = selfId,
+                event = com.resqmesh.experiment.ExperimentEvent.RELAY,
+                messageKey = frame.messageId.value,
+                fragIndex = 0,
+                hop = nextHop,
+                ttl = nextTtl,
+                rssi = rssi,
             )
+            return RelayDecision.Relayed(listOf(forwardedAck))
         }
 
         if (frame.messageId.origin == selfId) {
@@ -94,13 +125,20 @@ class RelayEngine(
         val stored = messageDao.findByKey(frame.messageId.value)
 
         if (peer != Peer.SELF) {
+            /*
+             * LATENSI & RTT:
+             * Latensi satu arah (one-way latency) antar-HP tidak valid dihitung dari wall-clock
+             * karena jam antar-HP tidak tersinkronisasi secara microsecond.
+             * Latensi RTT utama diukur di Origin saat ACK tiba (AckTracker).
+             * Di relay node, latencyMs diatur ke null agar tidak menghasilkan angka misleading.
+             */
             hopDao.insert(
                 MessageHopEntity(
                     messageKey = frame.messageId.value,
                     nodeId = selfId.value,
                     hopIndex = frame.hopCount + 1,
                     rssi = rssi,
-                    latencyMs = stored?.let { now - it.createdAt },
+                    latencyMs = null,
                     observedAt = now,
                 ),
             )
@@ -129,7 +167,7 @@ class RelayEngine(
         verdict: FrameVerdict,
         now: Long,
     ): RelayDecision {
-        val isDestination = frame.destination == selfId
+        val isDestination = frame.destination == selfId || (isResponder && frame.isSos)
 
         if (isDestination) {
             val entity = buildEntity(
@@ -193,10 +231,10 @@ class RelayEngine(
         // disiarkan ulang oleh node perantara.
         val destinationKnown =
             frame.destination.isBroadcast || nodeDao.find(frame.destination.value) != null
-        val status = if (destinationKnown) {
-            MessageStatus.IN_TRANSIT
-        } else {
-            MessageStatus.PENDING_FORWARD
+        val status = when {
+            !destinationKnown -> MessageStatus.PENDING_FORWARD
+            frame.isSos -> MessageStatus.CARRYING
+            else -> MessageStatus.IN_TRANSIT
         }
         val nextTtl = ttlPolicy.nextTtl(frame.ttl)
         val nextHop = ttlPolicy.nextHop(frame.hopCount)
@@ -313,8 +351,8 @@ class RelayEngine(
     private fun buildAck(frame: MeshFrame): MeshFrame = MeshFrame(
         messageId = frame.messageId,
         destination = NodeId.BROADCAST_ID,
-        ttl = frame.ttl,
-        hopCount = frame.hopCount,
+        ttl = MeshConfig.ACK_TTL,
+        hopCount = 0,
         flags = frame.flags or MsgFlag.IS_ACK,
         fragIndex = 0,
         fragCount = 1,
@@ -345,7 +383,8 @@ class RelayEngine(
     suspend fun pruneStale() {
         val now = clock.now()
         nodeDao.pruneStale(now - MeshConfig.NODE_STALE_MS)
-        assembler.evictExpired(now)
+        val evictedKeys = assembler.evictExpiredKeys(now)
+        evictedKeys.forEach { key -> duplicateGuard.clearSeenFrames(key) }
         duplicateGuard.pruneExpired()
     }
 }

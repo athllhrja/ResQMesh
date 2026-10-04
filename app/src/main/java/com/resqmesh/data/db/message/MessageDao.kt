@@ -34,6 +34,28 @@ interface MessageDao {
     """)
     suspend fun pendingForwardsTo(destinationId: Long): List<MessageEntity>
 
+    @Query("""
+        SELECT * FROM MessageEntity
+        WHERE originNodeId = :selfId
+          AND isSos = 1
+          AND status NOT IN ('ACKED', 'EXPIRED', 'FAILED', 'CANCELLED')
+          AND createdAt >= :cutoff
+        ORDER BY createdAt DESC
+    """)
+    suspend fun activeSelfSosMessages(selfId: Long, cutoff: Long): List<MessageEntity>
+
+    @Query("""
+        SELECT * FROM MessageEntity
+        WHERE originNodeId != :selfId
+          AND isSos = 1
+          AND status NOT IN ('ACKED', 'EXPIRED', 'FAILED', 'CANCELLED')
+          AND ttl > 0
+          AND createdAt >= :cutoff
+        ORDER BY createdAt DESC
+        LIMIT :limit
+    """)
+    suspend fun activeCarriedSosMessages(selfId: Long, cutoff: Long, limit: Int = 16): List<MessageEntity>
+
     @Query("SELECT COUNT(*) FROM MessageEntity WHERE status = 'PENDING_FORWARD'")
     fun observePendingForwardCount(): Flow<Int>
 
@@ -53,12 +75,36 @@ interface MessageDao {
     @Query("""
         UPDATE MessageEntity
         SET status = 'DELIVERED', deliveredAt = :now
-        WHERE messageKey = :key AND status IN ('PENDING_FORWARD','IN_TRANSIT')
+        WHERE messageKey = :key AND status IN ('PENDING_FORWARD','IN_TRANSIT','CARRYING')
     """)
     suspend fun markDelivered(key: Long, now: Long): Int
 
     @Query("UPDATE MessageEntity SET status = 'ACKED' WHERE messageKey = :key AND status != 'ACKED'")
     suspend fun markAcked(key: Long): Int
+
+    @Query("""
+        UPDATE MessageEntity
+        SET status = 'ACKED'
+        WHERE (messageKey = :key OR incidentKey = :key)
+          AND status != 'ACKED'
+    """)
+    suspend fun markAckedForIncident(key: Long): Int
+
+    @Query("""
+        UPDATE MessageEntity
+        SET status = 'CANCELLED'
+        WHERE originNodeId = :selfId
+          AND isSos = 1
+          AND status NOT IN ('ACKED', 'EXPIRED', 'FAILED', 'CANCELLED')
+    """)
+    suspend fun cancelSelfSos(selfId: Long): Int
+
+    @Query("""
+        UPDATE MessageEntity
+        SET status = 'CARRYING'
+        WHERE messageKey = :key AND status NOT IN ('ACKED', 'EXPIRED', 'FAILED', 'CANCELLED')
+    """)
+    suspend fun markCarrying(key: Long): Int
 
     @Query("UPDATE MessageEntity SET status = 'EXPIRED', ttl = 0 WHERE messageKey = :key")
     suspend fun markExpired(key: Long): Int

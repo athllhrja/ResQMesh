@@ -35,12 +35,28 @@ object MeshPermissions {
         emptyArray()
     }
 
+    private val NOTIFICATION = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        arrayOf(Manifest.permission.POST_NOTIFICATIONS)
+    } else {
+        emptyArray()
+    }
+
     val locationPermissions: Array<String> = LOCATION
 
     val bluetoothPermissions: Array<String> = BLUETOOTH
 
+    val notificationPermissions: Array<String> = NOTIFICATION
+
+    val servicePermissions: Array<String> = BLUETOOTH + NOTIFICATION
+
     fun hasBluetooth(context: Context): Boolean =
         BLUETOOTH.all { granted(context, it) }
+
+    fun hasNotification(context: Context): Boolean =
+        NOTIFICATION.all { granted(context, it) }
+
+    fun canStartService(context: Context): Boolean =
+        hasBluetooth(context) && hasNotification(context)
 
     fun hasLocation(context: Context): Boolean =
         LOCATION.any { granted(context, it) }
@@ -50,7 +66,10 @@ object MeshPermissions {
 
     /** Izin yang belum terpenuhi, untuk langsung diminta dari UI. */
     fun missing(context: Context): List<String> =
-        (BLUETOOTH + LOCATION).filterNot { granted(context, it) }
+        (BLUETOOTH + NOTIFICATION + LOCATION).filterNot { granted(context, it) }
+
+    fun missingForService(context: Context): List<String> =
+        (BLUETOOTH + NOTIFICATION).filterNot { granted(context, it) }
 
     private fun granted(context: Context, permission: String): Boolean =
         ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
@@ -70,6 +89,8 @@ class PermissionState(
 
     private fun snapshot() = PermissionSnapshot(
         hasBluetooth = MeshPermissions.hasBluetooth(context),
+        hasNotification = MeshPermissions.hasNotification(context),
+        canStartService = MeshPermissions.canStartService(context),
         hasLocation = MeshPermissions.hasLocation(context),
         hasPreciseLocation = MeshPermissions.hasPreciseLocation(context),
         isLocationProviderEnabled = locationSource.isProviderEnabled(),
@@ -78,6 +99,8 @@ class PermissionState(
 
 data class PermissionSnapshot(
     val hasBluetooth: Boolean,
+    val hasNotification: Boolean,
+    val canStartService: Boolean,
     val hasLocation: Boolean,
     val hasPreciseLocation: Boolean,
     val isLocationProviderEnabled: Boolean,
@@ -88,5 +111,5 @@ data class PermissionSnapshot(
      */
     val canSendPreciseLocation: Boolean get() = hasPreciseLocation
 
-    val needsRuntimeRequest: Boolean get() = !hasBluetooth || !hasLocation
+    val needsRuntimeRequest: Boolean get() = !canStartService || !hasLocation
 }

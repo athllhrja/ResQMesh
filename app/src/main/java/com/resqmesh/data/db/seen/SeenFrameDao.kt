@@ -13,6 +13,9 @@ interface SeenFrameDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun tryInsert(entry: SeenFrameEntity): Long
 
+    @Query("DELETE FROM SeenFrameEntity WHERE messageKey = :messageKey")
+    suspend fun deleteByMessageKey(messageKey: Long): Int
+
     @Query("DELETE FROM SeenFrameEntity WHERE expiresAt < :now")
     suspend fun purgeExpired(now: Long): Int
 

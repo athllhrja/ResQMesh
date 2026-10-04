@@ -25,7 +25,8 @@ class FragmentAssembler(
         val hopCount: Int,
         val flags: Int,
         val totalLen: Int,
-        val startedAt: Long,
+        val fragCount: Int,
+        var lastUpdatedAt: Long,
         val received: MutableMap<Int, ByteArray> = mutableMapOf(),
     )
 
@@ -35,7 +36,7 @@ class FragmentAssembler(
         val now = clock.now()
         evictExpired(now)
 
-        if (frame.fragCount == 1) {
+        if (frame.fragCount <= 1) {
             return AssemblyResult.Complete(frame.payloadChunk)
         }
         if (frame.totalPayloadLen > MeshConfig.MAX_PAYLOAD_BYTES) {
@@ -51,7 +52,8 @@ class FragmentAssembler(
                 hopCount = frame.hopCount,
                 flags = frame.flags,
                 totalLen = frame.totalPayloadLen,
-                startedAt = now,
+                fragCount = frame.fragCount,
+                lastUpdatedAt = now,
             )
         }
 
@@ -60,6 +62,7 @@ class FragmentAssembler(
             return AssemblyResult.Malformed("Header fragmen tidak konsisten")
         }
 
+        slot.lastUpdatedAt = now
         slot.received[frame.fragIndex] = frame.payloadChunk
 
         if (slot.received.size < frame.fragCount) return AssemblyResult.Incomplete
@@ -78,9 +81,16 @@ class FragmentAssembler(
 
     fun pendingCount(): Int = pending.size
 
-    fun evictExpired(now: Long = clock.now()): Int {
-        val expired = pending.values.filter { now - it.startedAt > MeshConfig.ASSEMBLY_TIMEOUT_MS }
-        expired.forEach { pending.remove(it.id.value) }
-        return expired.size
+    fun timeoutFor(fragCount: Int): Long =
+        maxOf(MeshConfig.ASSEMBLY_TIMEOUT_MS, fragCount * MeshConfig.ASSEMBLY_TIMEOUT_PER_FRAG_MS)
+
+    fun evictExpiredKeys(now: Long = clock.now()): List<Long> {
+        val expiredKeys = pending.values
+            .filter { now - it.lastUpdatedAt > timeoutFor(it.fragCount) }
+            .map { it.id.value }
+        expiredKeys.forEach { pending.remove(it) }
+        return expiredKeys
     }
+
+    fun evictExpired(now: Long = clock.now()): Int = evictExpiredKeys(now).size
 }

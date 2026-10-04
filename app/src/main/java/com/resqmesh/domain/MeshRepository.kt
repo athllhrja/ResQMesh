@@ -18,6 +18,8 @@ interface MeshRepository {
     fun observeConversation(peerId: NodeId, limit: Int = 100): Flow<List<Message>>
     fun observeMeshState(): Flow<MeshState>
     fun observePendingForwardCount(): Flow<Int>
+    fun isResponder(): Boolean
+    fun setResponder(enabled: Boolean)
 
     /** Insiden darurat, satu insiden per kartu walau dikirim sebagai dua pesan. */
     fun observeSosIncidents(limit: Int = 100): Flow<List<SosIncident>>
@@ -57,5 +59,6 @@ interface MeshRepository {
     ): MessageId
 
     suspend fun rebroadcastPending(): Int
+    suspend fun cancelSelfSos(): Int
     suspend fun prune(): Int
 }

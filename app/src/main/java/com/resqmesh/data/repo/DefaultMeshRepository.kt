@@ -3,7 +3,6 @@ package com.resqmesh.data.repo
 import com.resqmesh.core.MeshConfig
 import com.resqmesh.core.TimeProvider
 import com.resqmesh.data.db.message.MessageDao
-import com.resqmesh.data.db.message.MessageEntity
 import com.resqmesh.data.db.node.NodeDao
 import com.resqmesh.data.db.seen.SeenMessageDao
 import com.resqmesh.data.db.toDomain
@@ -18,12 +17,14 @@ import com.resqmesh.domain.model.NodeId
 import com.resqmesh.domain.model.SosIncident
 import com.resqmesh.domain.model.SosKind
 import com.resqmesh.mesh.MeshManager
+import com.resqmesh.mesh.StoreAndForwardQueue
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
 
 class DefaultMeshRepository(
     private val manager: MeshManager,
+    private val storeAndForwardQueue: StoreAndForwardQueue,
     private val nodeDao: NodeDao,
     private val messageDao: MessageDao,
     private val seenDao: SeenMessageDao,
@@ -55,6 +56,12 @@ class DefaultMeshRepository(
 
     override fun observePendingForwardCount(): Flow<Int> = messageDao.observePendingForwardCount()
 
+    override fun isResponder(): Boolean = manager.isResponder
+
+    override fun setResponder(enabled: Boolean) {
+        manager.isResponder = enabled
+    }
+
     override suspend fun sendTo(
         destination: NodeId,
         text: String,
@@ -81,29 +88,9 @@ class DefaultMeshRepository(
         ttl = ttl,
     )
 
-    override suspend fun rebroadcastPending(): Int {
-        val pending = messageDao.pendingForwards(limit = 16)
-        var replayed = 0
-        for (message: MessageEntity in pending) {
-            if (message.ttl <= 0) {
-                messageDao.markExpired(message.messageKey)
-                continue
-            }
-            val entry = seenDao.find(message.messageKey)
-            val limit = if (message.isSos) {
-                MeshConfig.SOS_FLOOD_FORWARD_LIMIT
-            } else {
-                MeshConfig.NORMAL_FORWARD_LIMIT
-            }
-            if (entry != null && entry.forwardCount >= limit) {
-                messageDao.markExpired(message.messageKey)
-                continue
-            }
-            manager.replay(message)
-            replayed++
-        }
-        return replayed
-    }
+    override suspend fun rebroadcastPending(): Int = storeAndForwardQueue.flushPendingOutbox()
+
+    override suspend fun cancelSelfSos(): Int = manager.cancelSelfSos()
 
     override suspend fun prune(): Int {
         val now = clock.now()

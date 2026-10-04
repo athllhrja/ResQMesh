@@ -8,11 +8,9 @@ import java.util.concurrent.ConcurrentLinkedQueue
  * Android hanya mengizinkan satu advertiser per proses, sehingga semua frame
  * keluar diserialisasi lewat antrean ini.
  *
- * Latest-wins tetap dipakai untuk tekan-tekan tombol SOS yang sama berulang kali,
- * tetapi dedupe dilakukan per fragmen, bukan per frame. Alasannya SOS_LOC pecah
- * menjadi dua frame (9 + 7 byte) dan keduanya wajib keluar: kalau penyimpanan
- * urgent hanya mengingat satu frame terakhir, fragmen kedua akan menimpa
- * fragmen pertama dan koordinat tidak pernah sampai.
+ * Batas kapasitas dihitung berdasarkan jumlah pesan unik (messageKey). Saat
+ * antrean penuh, seluruh fragmen milik pesan tertua dibuang sekaligus agar
+ * tidak ada pesan yang terpotong separuh.
  */
 class RelayQueue(private val capacity: Int = MeshConfig.MAX_RELAY_QUEUE) {
 
@@ -24,20 +22,44 @@ class RelayQueue(private val capacity: Int = MeshConfig.MAX_RELAY_QUEUE) {
 
     fun pushUrgent(frame: MeshFrame) {
         if (frame.isAck) {
-            normal.add(frame)
+            pushNormal(frame)
             return
         }
         val slot = MeshSlot(frame.messageId.value, frame.fragIndex)
         if (!urgentSlots.add(slot)) return
-        while (urgent.size >= capacity) {
-            val dropped = urgent.poll() ?: break
-            urgentSlots.remove(MeshSlot(dropped.messageId.value, dropped.fragIndex))
+
+        val messageKey = frame.messageId.value
+        val currentMessageKeys = urgent.map { it.messageId.value }.distinct()
+
+        if (currentMessageKeys.size >= capacity && messageKey !in currentMessageKeys) {
+            val oldestKey = currentMessageKeys.first()
+            dropMessageFromUrgent(oldestKey)
         }
+
         urgent.add(frame)
     }
 
     fun pushNormal(frame: MeshFrame) {
-        if (normal.size < capacity) normal.add(frame)
+        val messageKey = frame.messageId.value
+        val currentMessageKeys = normal.map { it.messageId.value }.distinct()
+
+        if (currentMessageKeys.size >= capacity && messageKey !in currentMessageKeys) {
+            val oldestKey = currentMessageKeys.first()
+            normal.removeIf { it.messageId.value == oldestKey }
+        }
+
+        normal.add(frame)
+    }
+
+    private fun dropMessageFromUrgent(messageKey: Long) {
+        urgent.removeIf {
+            if (it.messageId.value == messageKey) {
+                urgentSlots.remove(MeshSlot(it.messageId.value, it.fragIndex))
+                true
+            } else {
+                false
+            }
+        }
     }
 
     fun poll(): MeshFrame? {
@@ -58,7 +80,6 @@ class RelayQueue(private val capacity: Int = MeshConfig.MAX_RELAY_QUEUE) {
 
     private data class MeshSlot(val messageKey: Long, val fragIndex: Int)
 
-    /** Wrapper kecil supaya [add] mengembalikan hasil penempatan yang sebenarnya. */
     private class ConcurrentHashMapSlotSet {
         private val slots = java.util.concurrent.ConcurrentHashMap<MeshSlot, Boolean>()
 

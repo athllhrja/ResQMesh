@@ -5,6 +5,13 @@ import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
+/**
+ * Rekam jejak hop per-pesan.
+ *
+ * [latencyMs] menyimpan nilai Round-Trip Time (RTT) dalam milidetik yang diukur
+ * hanya pada Origin (HP Pengirim) saat ACK tiba, menggunakan satu jam tunggal.
+ * Latensi satu arah antar-HP per-hop bernilai null karena jam antar-HP tidak tersinkron.
+ */
 @Entity(
     tableName = "MessageHopEntity",
     indices = [Index(value = ["messageKey", "hopIndex"])],

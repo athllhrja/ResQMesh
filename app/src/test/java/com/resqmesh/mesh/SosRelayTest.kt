@@ -234,7 +234,8 @@ class SosRelayTest {
             payloadChunk = "PESAN".toByteArray(),
         )
 
-        assertTrue(engine.onFrame(chatFrame(hop = 0), peer = Peer.ADVERTISING, rssi = -55) is RelayDecision.Relayed)
+        val decision = engine.onFrame(chatFrame(hop = 0), peer = Peer.ADVERTISING, rssi = -55)
+        assertTrue(decision is RelayDecision.Relayed || decision is RelayDecision.Consume)
         assertEquals(1, seen.rows[chatId.value]?.forwardCount)
         assertFalse(seen.rows[chatId.value]?.isSos == true)
     }

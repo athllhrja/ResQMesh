@@ -204,48 +204,29 @@ class MeshMultiHopSimulationTest {
         assertEquals("Duplicate Detection (F6) harus menolak duplikat", RelayDecision.Reject(RejectReason.DUPLICATE), duplicateDecisionB)
         println("[STEP 2.1 SUCCESS] Duplicate Detection (F6) berhasil menolak frame duplikat pada B")
 
-        // 3. Aliran B -> C (Second Hop Relay)
-        val relayedByC = mutableListOf<MeshFrame>()
+        // 3. Aliran B -> C (Second Hop Relay & Responder C)
+        engineC.isResponder = true
+        var ackFromC: MeshFrame? = null
         for (frame in relayedByB) {
             val decisionC = engineC.onFrame(frame, peer = Peer.ADVERTISING, rssi = -65)
-            if (decisionC is RelayDecision.Relayed) {
-                relayedByC.addAll(decisionC.frames)
+            if (decisionC is RelayDecision.Ack) {
+                ackFromC = decisionC.frame
             }
         }
-        assertTrue("Node C harus merelay fragmen dari B", relayedByC.isNotEmpty())
-        val firstRelayedC = relayedByC.first()
-
-        assertEquals("TTL Node C harus berkurang jadi 1 (F7)", 1, firstRelayedC.ttl)
-        assertEquals("Hop Count Node C harus bertambah jadi 2 (F8)", 2, firstRelayedC.hopCount)
-        assertEquals("Sender ID original harus tetap milik A pada C", idA, firstRelayedC.messageId.origin)
-        assertEquals("Message ID harus tetap utuh", sosMessageId, firstRelayedC.messageId)
+        assertNotNull("Responder Node C harus memproduksi ACK untuk SOS", ackFromC)
 
         val storedC = messagesC.findByKey(sosMessageId.value)
         assertNotNull("Node C harus menyimpan history (F11)", storedC)
-        println("[STEP 3 SUCCESS] Aliran B -> C: Node C menerima fragmen, TTL -> 1, Hop -> 2, sender & message ID tetap utuh")
+        println("[STEP 3 SUCCESS] Aliran B -> C: Responder Node C menerima fragmen dan membuat ACK produksi")
 
-        // 4. Aliran C -> A (ACK Propagation F10)
-        // Node C membuat paket ACK untuk SOS tersebut
-        val ackFrame = MeshFrame(
-            messageId = sosMessageId,
-            destination = idA,
-            ttl = 3,
-            hopCount = 0,
-            flags = MsgFlag.IS_ACK,
-            fragIndex = 0,
-            fragCount = 1,
-            totalPayloadLen = 0,
-            payloadChunk = ByteArray(0),
-        )
-
-        // Node B me-relay ACK ke Node A
-        val decisionAckB = engineB.onFrame(ackFrame, peer = Peer.ADVERTISING, rssi = -60)
+        // 4. Aliran C -> A (ACK Propagation F10 lewat jalur produksi)
+        val decisionAckB = engineB.onFrame(ackFromC!!, peer = Peer.ADVERTISING, rssi = -60)
         assertTrue("Node B harus merelay ACK", decisionAckB is RelayDecision.Relayed)
         val relayedAck = (decisionAckB as RelayDecision.Relayed).frames.single()
 
         // Node A menerima ACK dan memperbarui status menjadi DELIVERED / ACKED
         val decisionAckA = engineA.onFrame(relayedAck, peer = Peer.ADVERTISING, rssi = -50)
-        assertTrue("Node A harus mengenali ACK miliknya", decisionAckA is RelayDecision.Ack || decisionAckA == RelayDecision.Ignore)
+        assertTrue("Node A harus mengenali ACK miliknya", decisionAckA is RelayDecision.Ignore || decisionAckA is RelayDecision.Ack)
 
         val finalNodeA = messagesA.findByKey(sosMessageId.value)
         assertEquals("Status SOS di Node A otomatis berubah menjadi DELIVERED / ACKED (F10 / F9)", MessageStatus.ACKED.wire, finalNodeA?.status)

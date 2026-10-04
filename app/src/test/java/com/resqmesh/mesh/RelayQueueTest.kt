@@ -77,6 +77,30 @@ class RelayQueueTest {
     }
 
     @Test
+    fun `saat antrean penuh yang dibuang adalah satu pesan utuh`() {
+        val queue = RelayQueue(capacity = 2)
+
+        // Pesan 1 (2 fragmen)
+        queue.pushUrgent(frame(seq = 1, fragIndex = 0))
+        queue.pushUrgent(frame(seq = 1, fragIndex = 1))
+
+        // Pesan 2 (2 fragmen)
+        queue.pushUrgent(frame(seq = 2, fragIndex = 0))
+        queue.pushUrgent(frame(seq = 2, fragIndex = 1))
+
+        assertEquals(4, queue.size())
+
+        // Pesan 3 (1 fragmen) melebihi kapasitas 2 pesan unik
+        queue.pushUrgent(frame(seq = 3, fragIndex = 0))
+
+        // Seluruh fragmen Pesan 1 harus dibuang utuh, tersisa Pesan 2 dan Pesan 3
+        assertEquals(3, queue.size())
+        assertEquals(2, queue.poll()?.messageId?.seq)
+        assertEquals(2, queue.poll()?.messageId?.seq)
+        assertEquals(3, queue.poll()?.messageId?.seq)
+    }
+
+    @Test
     fun `clear mengosongkan kedua jalur`() {
         val queue = RelayQueue()
 

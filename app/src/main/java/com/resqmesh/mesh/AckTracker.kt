@@ -7,18 +7,22 @@ import com.resqmesh.data.db.message.MessageHopEntity
 import com.resqmesh.domain.model.MessageId
 import com.resqmesh.domain.model.NodeId
 import com.resqmesh.domain.model.SignalStrength
+import com.resqmesh.experiment.ExperimentEvent
+import com.resqmesh.experiment.ExperimentLogger
 
 /**
  * Menandai pesan milik sendiri sebagai terkirim setelah ACK tiba.
  *
  * ACK di-wire-kan memakai `messageId` pesan asli, jadi originator mengenali
  * ACK-nya tanpa perlu field pengirim tambahan.
+ * RTT (Round-Trip Time) dihitung pada HP Origin dengan jam tunggal dari `now - createdAt`.
  */
 class AckTracker(
     private val selfId: NodeId,
     private val messageDao: MessageDao,
     private val hopDao: MessageHopDao,
     private val clock: TimeProvider,
+    private val logger: ExperimentLogger? = null,
 ) {
 
     suspend fun onAck(id: MessageId) {
@@ -27,15 +31,24 @@ class AckTracker(
         if (updated == 0) return
 
         val createdAt = messageDao.findByKey(id.value)?.createdAt ?: now
+        val rttMs = now - createdAt
         hopDao.insert(
             MessageHopEntity(
                 messageKey = id.value,
                 nodeId = selfId.value,
                 hopIndex = 0,
                 rssi = SignalStrength.RSSI_NONE,
-                latencyMs = now - createdAt,
+                latencyMs = rttMs,
                 observedAt = now,
             ),
+        )
+
+        logger?.logEvent(
+            nodeId = selfId,
+            event = ExperimentEvent.DELIVERED,
+            messageKey = id.value,
+            hop = 0,
+            ttl = 0,
         )
     }
 }

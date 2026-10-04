@@ -7,5 +7,6 @@ object NodeStatusFlags {
     const val SOS_RECEIVED = 0x04
     const val CHARGING = 0x08
     const val SCANNING = 0x10
-    const val KNOWN_MASK = MESH_ACTIVE or HAS_PENDING or SOS_RECEIVED or CHARGING or SCANNING
+    const val RESPONDER_NODE = 0x20
+    const val KNOWN_MASK = MESH_ACTIVE or HAS_PENDING or SOS_RECEIVED or CHARGING or SCANNING or RESPONDER_NODE
 }

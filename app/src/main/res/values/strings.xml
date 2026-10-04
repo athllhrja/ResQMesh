@@ -18,6 +18,31 @@
     <string name="home_scanning">Memindai</string>
     <string name="home_error">Gangguan</string>
     <string name="home_stopped">Berhenti</string>
+    <string name="home_start_mesh">Mulai Mesh</string>
+    <string name="home_stop_mesh">Hentikan Mesh</string>
+
+    <string name="home_mode_label">Mode Node</string>
+    <string name="home_mode_warga">Warga</string>
+    <string name="home_mode_responder">Tim Penolong</string>
+
+    <!-- Mode Eksperimen KTI -->
+    <string name="experiment_title">Eksperimen KTI</string>
+    <string name="experiment_setup_title">Pengaturan Eksperimen</string>
+    <string name="experiment_run_id_label">ID Pengujian (runId)</string>
+    <string name="experiment_scenario_label">Nama Skenario</string>
+    <string name="experiment_count_label">Jumlah SOS (N)</string>
+    <string name="experiment_interval_label">Jeda (detik)</string>
+    <string name="experiment_start_button">Mulai Eksperimen Uji</string>
+    <string name="experiment_stop_button">Hentikan Eksperimen</string>
+    <string name="experiment_files_title">Berkas Log CSV Eksperimen</string>
+    <string name="experiment_no_files">Belum ada berkas CSV log eksperimen.</string>
+
+    <!-- Notifikasi Service -->
+    <string name="notification_channel_name">Layanan Mesh ResQMesh</string>
+    <string name="notification_channel_desc">Notifikasi status layanan komunikasi mesh offline BLE</string>
+    <string name="notification_title">ResQMesh Aktif</string>
+    <string name="notification_text">Jaringan mesh BLE berjalan di latar belakang</string>
+    <string name="notification_action_stop">Hentikan mesh</string>
 
     <string name="nodes_empty">Belum ada node lain di sekitar.</string>
     <string name="nodes_signal">Sinyal: %1$s</string>
@@ -34,8 +59,10 @@
     <string name="status_delivered">Terkirim</string>
     <string name="status_pending">Menunggu</string>
     <string name="status_transit">Dalam perjalanan</string>
+    <string name="status_carrying">Membawa SOS</string>
     <string name="status_expired">Kedaluwarsa</string>
     <string name="status_failed">Gagal</string>
+    <string name="status_cancelled">Dibatalkan</string>
     <string name="status_awaiting">Menyusun fragmen</string>
     <string name="status_hops">%1$d hop</string>
 

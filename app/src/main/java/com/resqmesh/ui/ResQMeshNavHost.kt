@@ -17,14 +17,16 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.resqmesh.R
+import com.resqmesh.di.AppGraph
 import com.resqmesh.domain.model.NodeId
 import com.resqmesh.domain.model.SosIncident
-import com.resqmesh.di.AppGraph
 import com.resqmesh.ui.alerts.AlertsScreen
 import com.resqmesh.ui.alerts.AlertsViewModel
 import com.resqmesh.ui.chat.ChatScreen
 import com.resqmesh.ui.chat.ChatViewModel
 import com.resqmesh.ui.components.MapLauncher
+import com.resqmesh.ui.experiment.ExperimentScreen
+import com.resqmesh.ui.experiment.ExperimentViewModel
 import com.resqmesh.ui.history.HistoryScreen
 import com.resqmesh.ui.history.HistoryViewModel
 import com.resqmesh.ui.home.HomeScreen
@@ -37,6 +39,7 @@ object Routes {
     const val NODES = "nodes"
     const val HISTORY = "history"
     const val ALERTS = "alerts"
+    const val EXPERIMENT = "experiment"
     const val CHAT = "chat/{peerId}"
 
     fun chat(peerId: NodeId) = "chat/${peerId.hex}"
@@ -72,6 +75,23 @@ fun ResQMeshNavHost(
                 onOpenNodes = { navController.navigateSingleTop(Routes.NODES) },
                 onOpenHistory = { navController.navigateSingleTop(Routes.HISTORY) },
                 onOpenAlerts = { navController.navigateSingleTop(Routes.ALERTS) },
+                onOpenExperiment = { navController.navigateSingleTop(Routes.EXPERIMENT) },
+            )
+        }
+
+        composable(
+            route = Routes.EXPERIMENT,
+            enterTransition = { slideInHorizontally { it } + fadeIn() },
+            exitTransition = { fadeOut() },
+            popEnterTransition = { fadeIn() },
+            popExitTransition = { slideOutHorizontally { it } + fadeOut() },
+        ) {
+            val viewModel: ExperimentViewModel = viewModel(
+                factory = ExperimentViewModel.factory(graph.repository, graph.experimentLogger),
+            )
+            ExperimentScreen(
+                viewModel = viewModel,
+                onBack = { navController.popBackStack() },
             )
         }
 

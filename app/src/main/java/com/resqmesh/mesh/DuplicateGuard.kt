@@ -62,18 +62,31 @@ class DuplicateGuard(
         return rowId != -1L
     }
 
-    suspend fun registerFrame(id: MessageId, fragIndex: Int, hop: Int): FrameVerdict {
+    suspend fun registerFrame(
+        id: MessageId,
+        fragIndex: Int,
+        hop: Int,
+        isAck: Boolean = false,
+    ): FrameVerdict {
         val now = clock.now()
+        val effectiveFragIndex = if (isAck) ACK_FRAG_INDEX else fragIndex
         val rowId = seenFrameDao.tryInsert(
             SeenFrameEntity(
                 messageKey = id.value,
-                fragIndex = fragIndex,
+                fragIndex = effectiveFragIndex,
                 hopCount = hop,
                 firstSeenAt = now,
                 expiresAt = now + MeshConfig.SEEN_RETENTION_MS,
             ),
         )
         return if (rowId != -1L) FrameVerdict.Fresh else FrameVerdict.Repeated
+    }
+
+    suspend fun clearSeenFrames(messageKey: Long): Int =
+        seenFrameDao.deleteByMessageKey(messageKey)
+
+    companion object {
+        const val ACK_FRAG_INDEX = 0x1000
     }
 
     /** Mendaftarkan pesan saat pertama kali diterima; dipakai untuk bookkeeping forward. */

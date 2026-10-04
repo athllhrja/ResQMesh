@@ -61,21 +61,29 @@ class NoOpMeshTransport : MeshTransport {
 
 class MeshManager(
     private val scope: CoroutineScope,
-    private val selfId: NodeId,
+    val selfId: NodeId,
     private val nodeDao: NodeDao,
     private val messageDao: MessageDao,
-    private val relayEngine: RelayEngine,
+    val relayEngine: RelayEngine,
     private val codec: FrameCodec,
     private val identity: MessageIdFactory,
     private val clock: TimeProvider,
     private val transport: MeshTransport,
     private val scheduler: BeaconScheduler,
     private val forwardingPolicy: ForwardingPolicy,
+    private val logger: com.resqmesh.experiment.ExperimentLogger? = null,
 ) {
     private val _state = MutableStateFlow(MeshState.stopped(selfId))
     val state: StateFlow<MeshState> = _state.asStateFlow()
 
+    var isResponder: Boolean
+        get() = relayEngine.isResponder
+        set(value) {
+            relayEngine.isResponder = value
+        }
+
     private var pruneJob: Job? = null
+    var storeAndForwardQueue: StoreAndForwardQueue? = null
 
     fun start() {
         if (_state.value.isRunning) return
@@ -86,6 +94,7 @@ class MeshManager(
             lastError = null,
         )
         scheduler.start()
+        storeAndForwardQueue?.start()
         transport.start(
             onFrame = { frame, rssi -> scope.launch { handleFrame(frame, rssi) } },
             onBeacon = { payload, rssi -> scope.launch { onBeaconFrame(payload, rssi) } },
@@ -97,6 +106,7 @@ class MeshManager(
 
     fun stop() {
         scheduler.stop()
+        storeAndForwardQueue?.stop()
         transport.stop()
         pruneJob?.cancel()
         pruneJob = null
@@ -162,6 +172,14 @@ class MeshManager(
         )
         val frames = Fragmenter.fragmentsOf(base, payload)
         scheduler.enqueueFrames(frames, urgent = isSos)
+
+        logger?.logEvent(
+            nodeId = selfId,
+            event = com.resqmesh.experiment.ExperimentEvent.SEND,
+            messageKey = id.value,
+            hop = 0,
+            ttl = safeTtl,
+        )
 
         if (isSos) {
             scheduler.setSosActive(true)
@@ -313,35 +331,61 @@ suspend fun submitSos(
         scheduler.enqueueFrames(Fragmenter.fragmentsOf(base, payload), urgent = true)
     }
 
-    suspend fun replay(message: MessageEntity) {
-        // Flag struktural harus ikut di-replay. Kalau SOS_PAYLOAD/SOS_LOC hilang,
-        // node penerima akan membaca blob koordinat sebagai teks UTF-8 dan
-        // insidennya rusak meskipun frame-nya sampai.
-        val structuralFlags = MsgFlag.SOS_PAYLOAD or
+    suspend fun reAdvertiseSelfSos(message: MessageEntity) {
+        val structuralFlags = (if (message.isSos) MsgFlag.SOS_PAYLOAD or MsgFlag.SOS else 0) or
             (if (message.isSosLoc) MsgFlag.SOS_LOC else 0) or
-            (if (message.isSos) MsgFlag.SOS else 0)
+            MsgFlag.ACK_REQUESTED
         val base = MeshFrame(
             messageId = MessageId(message.messageKey),
             destination = NodeId(message.destinationId),
-            ttl = (message.ttl - 1).coerceAtLeast(0),
-            hopCount = message.hopCount + 1,
-            flags = MsgFlag.REPLAY or MsgFlag.ACK_REQUESTED or structuralFlags,
+            ttl = message.initialTtl,
+            hopCount = 0,
+            flags = structuralFlags,
             fragIndex = 0,
             fragCount = 1,
             totalPayloadLen = message.payloadBytes.size,
             payloadChunk = message.payloadBytes,
         )
-        messageDao.markForwarded(
-            key = message.messageKey,
-            status = MessageStatus.IN_TRANSIT.wire,
-            ttl = base.ttl,
-            hopCount = base.hopCount,
-            now = clock.now(),
+        scheduler.enqueueFrames(
+            Fragmenter.fragmentsOf(base, message.payloadBytes),
+            urgent = true,
+        )
+    }
+
+    suspend fun replayRelay(message: MessageEntity) {
+        val structuralFlags = (if (message.isSos) MsgFlag.SOS_PAYLOAD or MsgFlag.SOS else 0) or
+            (if (message.isSosLoc) MsgFlag.SOS_LOC else 0) or
+            MsgFlag.REPLAY or MsgFlag.ACK_REQUESTED
+        val base = MeshFrame(
+            messageId = MessageId(message.messageKey),
+            destination = NodeId(message.destinationId),
+            ttl = message.ttl,
+            hopCount = message.hopCount,
+            flags = structuralFlags,
+            fragIndex = 0,
+            fragCount = 1,
+            totalPayloadLen = message.payloadBytes.size,
+            payloadChunk = message.payloadBytes,
         )
         scheduler.enqueueFrames(
             Fragmenter.fragmentsOf(base, message.payloadBytes),
             urgent = message.isSos,
         )
+    }
+
+    suspend fun replay(message: MessageEntity) {
+        if (message.originNodeId == selfId.value) {
+            reAdvertiseSelfSos(message)
+        } else {
+            replayRelay(message)
+        }
+    }
+
+    suspend fun cancelSelfSos(): Int {
+        val count = messageDao.cancelSelfSos(selfId.value)
+        scheduler.setSosActive(false)
+        _state.value = _state.value.copy(isSosActive = false)
+        return count
     }
 
     suspend fun onBeaconFrame(payload: ByteArray, rssi: Int = SignalStrength.RSSI_NONE) {
@@ -421,6 +465,7 @@ suspend fun submitSos(
             if (message.ttl <= 0) continue
             replay(message)
         }
+        storeAndForwardQueue?.onNewPeerDiscovered()
     }
 
     private suspend fun refreshCounts() {

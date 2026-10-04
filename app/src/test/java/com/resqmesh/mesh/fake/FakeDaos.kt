@@ -141,6 +141,46 @@ class InMemoryMessageDao : MessageDao {
         return 1
     }
 
+    override suspend fun markAckedForIncident(key: Long): Int {
+        val matches = rows.values.filter { (it.messageKey == key || it.incidentKey == key) && it.status != "ACKED" }
+        matches.forEach { rows[it.messageKey] = it.copy(status = "ACKED") }
+        return matches.size
+    }
+
+    override suspend fun cancelSelfSos(selfId: Long): Int {
+        val matches = rows.values.filter {
+            it.originNodeId == selfId &&
+                it.isSos &&
+                it.status !in setOf("ACKED", "EXPIRED", "FAILED", "CANCELLED")
+        }
+        matches.forEach { rows[it.messageKey] = it.copy(status = "CANCELLED") }
+        return matches.size
+    }
+
+    override suspend fun markCarrying(key: Long): Int {
+        val row = rows[key] ?: return 0
+        if (row.status in setOf("ACKED", "EXPIRED", "FAILED", "CANCELLED")) return 0
+        rows[key] = row.copy(status = "CARRYING")
+        return 1
+    }
+
+    override suspend fun activeSelfSosMessages(selfId: Long, cutoff: Long): List<MessageEntity> =
+        rows.values.filter {
+            it.originNodeId == selfId &&
+                it.isSos &&
+                it.status !in setOf("ACKED", "EXPIRED", "FAILED", "CANCELLED") &&
+                it.createdAt >= cutoff
+        }.sortedByDescending { it.createdAt }
+
+    override suspend fun activeCarriedSosMessages(selfId: Long, cutoff: Long, limit: Int): List<MessageEntity> =
+        rows.values.filter {
+            it.originNodeId != selfId &&
+                it.isSos &&
+                it.status !in setOf("ACKED", "EXPIRED", "FAILED", "CANCELLED") &&
+                it.ttl > 0 &&
+                it.createdAt >= cutoff
+        }.sortedByDescending { it.createdAt }.take(limit)
+
     override suspend fun markExpired(key: Long): Int {
         val row = rows[key] ?: return 0
         rows[key] = row.copy(status = "EXPIRED", ttl = 0)
@@ -228,6 +268,12 @@ class InMemorySeenFrameDao : SeenFrameDao {
         if (rows.containsKey(key)) return -1L
         rows[key] = entry
         return 1L
+    }
+
+    override suspend fun deleteByMessageKey(messageKey: Long): Int {
+        val toRemove = rows.keys.filter { it.first == messageKey }
+        toRemove.forEach { rows.remove(it) }
+        return toRemove.size
     }
 
     override suspend fun purgeExpired(now: Long): Int {

@@ -78,9 +78,11 @@ private fun statusLabel(message: Message): String {
         MessageStatus.DELIVERED, MessageStatus.ACKED -> stringResource(R.string.status_delivered)
         MessageStatus.PENDING_FORWARD -> stringResource(R.string.status_pending)
         MessageStatus.IN_TRANSIT -> stringResource(R.string.status_transit)
+        MessageStatus.CARRYING -> stringResource(R.string.status_carrying)
         MessageStatus.AWAITING_FRAGMENTS -> stringResource(R.string.status_awaiting)
         MessageStatus.EXPIRED -> stringResource(R.string.status_expired)
         MessageStatus.FAILED -> stringResource(R.string.status_failed)
+        MessageStatus.CANCELLED -> stringResource(R.string.status_cancelled)
     }
     return if (message.hopCount > 0) {
         stringResource(R.string.status_hops, message.hopCount) + " · $status"
