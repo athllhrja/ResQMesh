@@ -78,8 +78,8 @@ class SimulatedMultiNodeTest {
         val receivedE = simE.messageDao.findByKey(sosId.value)
         assertNotNull("SOS harus sampai ke Responder E (lossRate=$lossRate)", receivedE)
 
-        // Assert 2: Hop count pada Responder E (2 atau 3 tergantung alur relay)
-        assertTrue("Hop count pada Responder E harus antara 2 dan 3", receivedE?.hopCount in 2..3)
+        // Assert 2: Hop count pada Responder E = 3 (jarak relay dari A)
+        assertEquals("Hop count pada Responder E harus 3", 3, receivedE?.hopCount)
 
         // Assert 3: ACK kembali ke Origin A
         val updatedA = simA.messageDao.findByKey(sosId.value)

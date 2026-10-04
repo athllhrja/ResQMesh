@@ -54,10 +54,11 @@ data class MeshFrame(
         flags = flags or extraFlags,
     )
 
-    fun withFragment(index: Int, chunk: ByteArray): MeshFrame = copy(
+    fun withFragment(index: Int, count: Int, chunk: ByteArray): MeshFrame = copy(
         fragIndex = index,
+        fragCount = count,
         payloadChunk = chunk,
-        flags = if (fragCount > 1) flags or MsgFlag.FRAGMENTED else flags and MsgFlag.FRAGMENTED.inv(),
+        flags = if (count > 1) flags or MsgFlag.FRAGMENTED else flags and MsgFlag.FRAGMENTED.inv(),
     )
 
     override fun equals(other: Any?): Boolean {
@@ -110,7 +111,7 @@ object Fragmenter {
     fun fragmentsOf(frame: MeshFrame, payload: ByteArray): List<MeshFrame> {
         val chunks = fragment(payload)
         return chunks.mapIndexed { index, chunk ->
-            frame.withFragment(index = index, chunk = chunk).copy(fragCount = chunks.size)
+            frame.withFragment(index = index, count = chunks.size, chunk = chunk)
         }
     }
 }

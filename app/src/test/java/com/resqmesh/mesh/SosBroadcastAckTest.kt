@@ -249,8 +249,62 @@ class SosBroadcastAckTest {
         val decision1 = relayEngine.onFrame(ackFrame, Peer.ADVERTISING, -60)
         assertTrue("Penerimaan ACK pertama harus diteruskan", decision1 is RelayDecision.Relayed)
 
-        // Penerimaan ACK duplikat kedua dari tetangga lain
+        // Penerimaan ACK duplikat kedua dari tetangga lain dalam rentang < 3s
         val decision2 = relayEngine.onFrame(ackFrame, Peer.ADVERTISING, -60)
-        assertEquals("ACK duplikat harus ditolak dan tidak diteruskan dua kali", RelayDecision.Reject(RejectReason.DUPLICATE), decision2)
+        assertEquals("ACK duplikat (<3s) harus ditolak dan tidak diteruskan dua kali", RelayDecision.Reject(RejectReason.DUPLICATE), decision2)
+    }
+
+    @Test
+    fun `tes_resend_ACK_dari_responder_diteruskan_oleh_relay_saat_jarak_3_detik_atau_lebih`() = runTest {
+        var currentTime = 10_000L
+        val testClock = object : TimeProvider {
+            override fun now(): Long = currentTime
+        }
+
+        val relayId = NodeId(0x222222)
+        val messages = InMemoryMessageDao()
+        val relayEngine = RelayEngine(
+            selfId = relayId,
+            duplicateGuard = DuplicateGuard(InMemorySeenMessageDao(), InMemorySeenFrameDao(), testClock),
+            ttlPolicy = TtlPolicy(),
+            assembler = FragmentAssembler(testClock),
+            ackTracker = AckTracker(relayId, messages, InMemoryMessageHopDao(), testClock),
+            messageDao = messages,
+            hopDao = InMemoryMessageHopDao(),
+            nodeDao = InMemoryNodeDao(),
+            clock = testClock,
+        )
+
+        val incidentId = MessageId.of(NodeId(0x111111), 300)
+        val ackFrame = MeshFrame(
+            messageId = incidentId,
+            destination = NodeId.BROADCAST_ID,
+            ttl = 10,
+            hopCount = 0,
+            flags = MsgFlag.IS_ACK,
+            fragIndex = 0,
+            fragCount = 1,
+            totalPayloadLen = 0,
+            payloadChunk = ByteArray(0),
+        )
+
+        // 1. Penerimaan ACK pertama pada t = 10.000 ms
+        val decision1 = relayEngine.onFrame(ackFrame, Peer.ADVERTISING, -60)
+        assertTrue("ACK pertama harus diteruskan", decision1 is RelayDecision.Relayed)
+
+        // 2. Salinan ke-2 dari pancaran yang sama (t = 10.150 ms) -> Harus ditolak sebagai DUPLICATE
+        currentTime = 10_150L
+        val decision2 = relayEngine.onFrame(ackFrame, Peer.ADVERTISING, -60)
+        assertEquals("Salinan ke-2 dari pancaran yang sama (<3s) harus ditolak", RelayDecision.Reject(RejectReason.DUPLICATE), decision2)
+
+        // 3. Salinan ke-3 dari pancaran yang sama (t = 10.300 ms) -> Harus ditolak sebagai DUPLICATE
+        currentTime = 10_300L
+        val decision3 = relayEngine.onFrame(ackFrame, Peer.ADVERTISING, -60)
+        assertEquals("Salinan ke-3 dari pancaran yang sama (<3s) harus ditolak", RelayDecision.Reject(RejectReason.DUPLICATE), decision3)
+
+        // 4. Resend ACK dari Responder setelah t = 13.500 ms (jarak 3.5 detik >= 3s)
+        currentTime = 13_500L
+        val decisionResend = relayEngine.onFrame(ackFrame, Peer.ADVERTISING, -60)
+        assertTrue("Resend ACK setelah >= 3s harus diteruskan kembali oleh relay", decisionResend is RelayDecision.Relayed)
     }
 }
