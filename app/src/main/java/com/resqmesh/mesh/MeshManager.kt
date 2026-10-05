@@ -332,6 +332,9 @@ suspend fun submitSos(
     }
 
     suspend fun reAdvertiseSelfSos(message: MessageEntity) {
+        if (message.isReassembly || message.payloadBytes.isEmpty()) {
+            return
+        }
         val structuralFlags = (if (message.isSos) MsgFlag.SOS_PAYLOAD or MsgFlag.SOS else 0) or
             (if (message.isSosLoc) MsgFlag.SOS_LOC else 0) or
             MsgFlag.ACK_REQUESTED
@@ -353,6 +356,9 @@ suspend fun submitSos(
     }
 
     suspend fun replayRelay(message: MessageEntity) {
+        if (message.isReassembly || message.payloadBytes.isEmpty()) {
+            return
+        }
         val structuralFlags = (if (message.isSos) MsgFlag.SOS_PAYLOAD or MsgFlag.SOS else 0) or
             (if (message.isSosLoc) MsgFlag.SOS_LOC else 0) or
             MsgFlag.REPLAY or MsgFlag.ACK_REQUESTED
