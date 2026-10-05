@@ -91,6 +91,8 @@ class InMemoryMessageDao : MessageDao {
             message
         } else {
             message.copy(
+                messageIdHex = existing.messageIdHex,
+                peerId = existing.peerId,
                 createdAt = existing.createdAt,
                 firstForwardAt = existing.firstForwardAt ?: message.firstForwardAt,
             )
@@ -166,7 +168,6 @@ class InMemoryMessageDao : MessageDao {
         rows.values.filter {
             it.originNodeId == selfId &&
                 it.isSos &&
-                !it.isReassembly &&
                 it.status !in setOf("ACKED", "EXPIRED", "FAILED", "CANCELLED") &&
                 it.createdAt >= cutoff
         }.sortedByDescending { it.createdAt }
@@ -175,7 +176,6 @@ class InMemoryMessageDao : MessageDao {
         rows.values.filter {
             it.originNodeId != selfId &&
                 it.isSos &&
-                !it.isReassembly &&
                 it.status !in setOf("ACKED", "EXPIRED", "FAILED", "CANCELLED") &&
                 it.ttl > 0 &&
                 it.createdAt >= cutoff

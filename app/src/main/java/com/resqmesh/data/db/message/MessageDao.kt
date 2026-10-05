@@ -38,7 +38,6 @@ interface MessageDao {
         SELECT * FROM MessageEntity
         WHERE originNodeId = :selfId
           AND isSos = 1
-          AND isReassembly = 0
           AND status NOT IN ('ACKED', 'EXPIRED', 'FAILED', 'CANCELLED')
           AND createdAt >= :cutoff
         ORDER BY createdAt DESC
@@ -49,7 +48,6 @@ interface MessageDao {
         SELECT * FROM MessageEntity
         WHERE originNodeId != :selfId
           AND isSos = 1
-          AND isReassembly = 0
           AND status NOT IN ('ACKED', 'EXPIRED', 'FAILED', 'CANCELLED')
           AND ttl > 0
           AND createdAt >= :cutoff
