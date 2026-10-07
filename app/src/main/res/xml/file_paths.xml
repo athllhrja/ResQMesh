@@ -2,4 +2,6 @@
 <paths>
     <external-files-path name="external_experiments" path="experiments" />
     <files-path name="internal_experiments" path="experiments" />
+    <external-files-path name="external_crash" path="crash" />
+    <files-path name="internal_crash" path="crash" />
 </paths>

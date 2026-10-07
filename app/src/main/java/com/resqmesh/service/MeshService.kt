@@ -15,6 +15,7 @@ import androidx.core.app.NotificationCompat
 import com.resqmesh.R
 import com.resqmesh.ResQMeshApp
 import com.resqmesh.core.MeshConfig
+import com.resqmesh.domain.model.MeshState
 import com.resqmesh.ui.MainActivity
 
 class MeshService : Service() {
@@ -27,37 +28,51 @@ class MeshService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        runCatching {
-            val action = intent?.action ?: MeshConfig.ACTION_START_MESH
-            if (action == MeshConfig.ACTION_STOP_MESH) {
-                stopMesh()
-                return START_NOT_STICKY
-            }
+        val action = intent?.action ?: MeshConfig.ACTION_START_MESH
+        if (action == MeshConfig.ACTION_STOP_MESH) {
+            stopMesh()
+            return START_NOT_STICKY
+        }
 
+        val foregroundStarted = runCatching {
             startForegroundServiceWithNotification()
-            val meshManager = (application as ResQMeshApp).graph.meshManager
-            meshManager.start()
         }.onFailure { e ->
-            Log.e(TAG, "Gagal menjalankan onStartCommand: ${e.message}", e)
+            Log.e(TAG, "Gagal startForeground, menghentikan service agar tidak crash: ${e.message}", e)
+            stopSelf()
+        }.isSuccess
+
+        if (!foregroundStarted) {
+            return START_NOT_STICKY
+        }
+
+        val meshManager = (application as ResQMeshApp).graph.meshManager
+        runCatching {
+            meshManager.start()
+            if (meshManager.state.value.phase == MeshState.Phase.ERROR) {
+                Log.w(TAG, "MeshManager dalam keadaan Gangguan, menghentikan foreground service")
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+            }
+        }.onFailure { e ->
+            Log.e(TAG, "Gagal meshManager.start(): ${e.message}", e)
+            meshManager.setError(e.message ?: "Gagal menjalankan mesh manager")
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
         }
 
         return START_STICKY
     }
 
     private fun startForegroundServiceWithNotification() {
-        runCatching {
-            val notification = createNotification()
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                startForeground(
-                    MeshConfig.NOTIFICATION_ID,
-                    notification,
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE,
-                )
-            } else {
-                startForeground(MeshConfig.NOTIFICATION_ID, notification)
-            }
-        }.onFailure { e ->
-            Log.e(TAG, "Gagal startForeground: ${e.message}", e)
+        val notification = createNotification()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(
+                MeshConfig.NOTIFICATION_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE,
+            )
+        } else {
+            startForeground(MeshConfig.NOTIFICATION_ID, notification)
         }
     }
 
@@ -109,7 +124,7 @@ class MeshService : Service() {
         return NotificationCompat.Builder(this, MeshConfig.NOTIFICATION_CHANNEL_ID)
             .setContentTitle(getString(R.string.notification_title))
             .setContentText(getString(R.string.notification_text))
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setSmallIcon(R.drawable.ic_stat_mesh)
             .setContentIntent(contentIntent)
             .setOngoing(true)
             .addAction(

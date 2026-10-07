@@ -73,7 +73,7 @@ class SosRetransmitAndCarryTest {
         sentFrames: MutableList<MeshFrame>,
     ): Pair<MeshManager, StoreAndForwardQueue> {
         val transport = object : MeshTransport {
-            override fun start(onFrame: (MeshFrame, Int) -> Unit, onBeacon: (ByteArray, Int) -> Unit) {}
+            override fun start(onFrame: (MeshFrame, Int) -> Unit, onBeacon: (ByteArray, Int) -> Unit): Result<Unit> = Result.success(Unit)
             override fun stop() {}
             override fun advertise(payload: ByteArray) {
                 runCatching { codec.decode(payload) }.getOrNull()?.let { sentFrames += it }

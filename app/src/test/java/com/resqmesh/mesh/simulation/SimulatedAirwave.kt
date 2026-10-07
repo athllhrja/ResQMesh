@@ -195,9 +195,10 @@ class SimulatedAirwave(
         override fun start(
             onFrame: (MeshFrame, Int) -> Unit,
             onBeacon: (ByteArray, Int) -> Unit,
-        ) {
+        ): Result<Unit> {
             onFrameCb = onFrame
             onBeaconCb = onBeacon
+            return Result.success(Unit)
         }
 
         override fun stop() {

@@ -29,12 +29,12 @@ import com.resqmesh.mesh.FramePublisher
 import com.resqmesh.mesh.MessageIdFactory
 import com.resqmesh.mesh.MeshManager
 import com.resqmesh.mesh.MeshTransport
-import com.resqmesh.mesh.NoOpMeshTransport
 import com.resqmesh.mesh.PeerLinkRegistry
 import com.resqmesh.mesh.RelayEngine
 import com.resqmesh.mesh.StoreAndForwardQueue
 import com.resqmesh.mesh.TtlPolicy
 import com.resqmesh.mesh.ble.BleMeshTransport
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -48,8 +48,12 @@ class AppGraph(context: Context) {
     private val appContext: Context = context.applicationContext
     private val clock: TimeProvider = SystemTimeProvider
 
+    private val exceptionHandler = CoroutineExceptionHandler { _, throwable ->
+        android.util.Log.e("AppGraph", "Unhandled exception in scope: ${throwable.message}", throwable)
+    }
+
     val scope: CoroutineScope =
-        CoroutineScope(SupervisorJob() + Dispatchers.Default + CoroutineName("resqmesh"))
+        CoroutineScope(SupervisorJob() + Dispatchers.Default + CoroutineName("resqmesh") + exceptionHandler)
 
     val database: ResQMeshDatabase by lazy { ResQMeshDatabase.build(appContext) }
     val nodeDao: NodeDao by lazy { database.nodeDao() }

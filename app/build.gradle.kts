@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -18,9 +20,45 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        create("field") {
+            val keystorePropsFile = rootProject.rootDir.resolve("keystore.properties")
+            if (keystorePropsFile.exists()) {
+                val props = Properties()
+                keystorePropsFile.inputStream().use { props.load(it) }
+                val storeFilePath = props.getProperty("storeFile")
+                if (!storeFilePath.isNullOrEmpty()) {
+                    val rawFile = File(storeFilePath)
+                    storeFile = if (rawFile.isAbsolute) {
+                        rawFile
+                    } else {
+                        rootProject.rootDir.resolve(storeFilePath)
+                    }
+                }
+                storePassword = props.getProperty("storePassword")
+                keyAlias = props.getProperty("keyAlias")
+                keyPassword = props.getProperty("keyPassword")
+            } else {
+                val debugConfig = getByName("debug")
+                storeFile = debugConfig.storeFile
+                storePassword = debugConfig.storePassword
+                keyAlias = debugConfig.keyAlias
+                keyPassword = debugConfig.keyPassword
+            }
+        }
+    }
+
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
+        }
+        create("field") {
+            initWith(getByName("debug"))
+            isDebuggable = false
+            isMinifyEnabled = false
+            applicationIdSuffix = ".field"
+            matchingFallbacks += listOf("debug")
+            signingConfig = signingConfigs.getByName("field")
         }
         release {
             isMinifyEnabled = true

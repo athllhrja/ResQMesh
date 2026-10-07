@@ -1,8 +1,10 @@
 package com.resqmesh.mesh
 
+import android.util.Log
 import com.resqmesh.core.MeshConfig
 import com.resqmesh.data.codec.FrameCodec
 import com.resqmesh.domain.model.MeshFrame
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -40,31 +42,37 @@ class BeaconScheduler(
         if (job != null) return
         job = scope.launch {
             while (isActive) {
-                val frame = queue.poll()
-                if (frame == null) {
-                    delay(jitter(MeshConfig.SCHEDULER_JITTER_MS))
-                    continue
-                }
-                val wire = runCatching { codec.encodeMessage(frame) }.getOrNull() ?: continue
-                val interval = intervalFor(frame)
-                val repeats = if (frame.isSos) {
-                    MeshConfig.REPEAT_COUNT_URGENT
-                } else {
-                    MeshConfig.REPEAT_COUNT_NORMAL
-                }
-                repeat(repeats) {
-                    publisher.publish(wire)
-                    if (selfId != null) {
-                        logger?.logEvent(
-                            nodeId = selfId,
-                            event = if (frame.isAck) com.resqmesh.experiment.ExperimentEvent.ACK_TX else com.resqmesh.experiment.ExperimentEvent.TX,
-                            messageKey = frame.messageId.value,
-                            fragIndex = frame.fragIndex,
-                            hop = frame.hopCount,
-                            ttl = frame.ttl,
-                        )
+                try {
+                    val frame = queue.poll()
+                    if (frame == null) {
+                        delay(jitter(MeshConfig.SCHEDULER_JITTER_MS))
+                        continue
                     }
-                    delay(jitter(interval))
+                    val wire = runCatching { codec.encodeMessage(frame) }.getOrNull() ?: continue
+                    val interval = intervalFor(frame)
+                    val repeats = if (frame.isSos) {
+                        MeshConfig.REPEAT_COUNT_URGENT
+                    } else {
+                        MeshConfig.REPEAT_COUNT_NORMAL
+                    }
+                    repeat(repeats) {
+                        publisher.publish(wire)
+                        if (selfId != null) {
+                            logger?.logEvent(
+                                nodeId = selfId,
+                                event = if (frame.isAck) com.resqmesh.experiment.ExperimentEvent.ACK_TX else com.resqmesh.experiment.ExperimentEvent.TX,
+                                messageKey = frame.messageId.value,
+                                fragIndex = frame.fragIndex,
+                                hop = frame.hopCount,
+                                ttl = frame.ttl,
+                            )
+                        }
+                        delay(jitter(interval))
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    Log.e(TAG, "Gagal pada iterasi loop BeaconScheduler: ${e.message}", e)
                 }
             }
         }
@@ -106,4 +114,8 @@ class BeaconScheduler(
 
     private fun jitter(base: Long): Long =
         base + random.nextLong(0, MeshConfig.SCHEDULER_JITTER_MS)
+
+    companion object {
+        private const val TAG = "BeaconScheduler"
+    }
 }

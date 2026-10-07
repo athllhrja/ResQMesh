@@ -19,6 +19,8 @@ import com.resqmesh.domain.model.MsgFlag
 import com.resqmesh.domain.model.NodeId
 import com.resqmesh.domain.model.SignalStrength
 import com.resqmesh.domain.model.SosKind
+import android.util.Log
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
@@ -39,7 +41,7 @@ interface MeshTransport {
     fun start(
         onFrame: (MeshFrame, Int) -> Unit,
         onBeacon: (ByteArray, Int) -> Unit,
-    )
+    ): Result<Unit>
 
     fun stop()
 
@@ -53,7 +55,7 @@ interface MeshTransport {
 }
 
 class NoOpMeshTransport : MeshTransport {
-    override fun start(onFrame: (MeshFrame, Int) -> Unit, onBeacon: (ByteArray, Int) -> Unit) = Unit
+    override fun start(onFrame: (MeshFrame, Int) -> Unit, onBeacon: (ByteArray, Int) -> Unit): Result<Unit> = Result.success(Unit)
     override fun stop() = Unit
     override fun advertise(payload: ByteArray) = Unit
     override fun sendOverLink(peerId: NodeId, frames: List<MeshFrame>) = Unit
@@ -87,6 +89,18 @@ class MeshManager(
 
     fun start() {
         if (_state.value.isRunning) return
+
+        val result = transport.start(
+            onFrame = { frame, rssi -> scope.launch { handleFrame(frame, rssi) } },
+            onBeacon = { payload, rssi -> scope.launch { onBeaconFrame(payload, rssi) } },
+        )
+
+        if (result.isFailure) {
+            val errorMsg = result.exceptionOrNull()?.message ?: "Gagal memulai BLE transport"
+            setError(errorMsg)
+            return
+        }
+
         _state.value = _state.value.copy(
             phase = MeshState.Phase.SCANNING,
             isScanning = true,
@@ -95,10 +109,6 @@ class MeshManager(
         )
         scheduler.start()
         storeAndForwardQueue?.start()
-        transport.start(
-            onFrame = { frame, rssi -> scope.launch { handleFrame(frame, rssi) } },
-            onBeacon = { payload, rssi -> scope.launch { onBeaconFrame(payload, rssi) } },
-        )
         if (pruneJob == null) {
             pruneJob = scope.launch { pruneLoop() }
         }
@@ -395,63 +405,75 @@ suspend fun submitSos(
     }
 
     suspend fun onBeaconFrame(payload: ByteArray, rssi: Int = SignalStrength.RSSI_NONE) {
-        val beacon = runCatching { codec.decodeBeacon(payload) }.getOrNull() ?: return
-        if (beacon.nodeId == selfId) return
-        val now = clock.now()
-        val existing = nodeDao.find(beacon.nodeId.value)
-        if (existing == null) {
-            nodeDao.upsert(
-                NodeEntity(
-                    nodeId = beacon.nodeId.value,
-                    displayName = beacon.nodeId.toString(),
-                    statusFlags = beacon.statusFlags,
-                    batteryPct = beacon.batteryPct,
-                    pendingCount = beacon.pendingCount,
-                    gattPeerCount = beacon.gattPeerCount,
-                    defaultTtl = beacon.defaultTtl,
-                    nodeSeq = beacon.nodeSeq,
-                    rssi = rssi,
-                    isSelf = false,
-                    firstSeenAt = now,
-                    lastSeenAt = now,
-                ),
+        try {
+            val beacon = runCatching { codec.decodeBeacon(payload) }.getOrNull() ?: return
+            if (beacon.nodeId == selfId) return
+            val now = clock.now()
+            val existing = nodeDao.find(beacon.nodeId.value)
+            if (existing == null) {
+                nodeDao.upsert(
+                    NodeEntity(
+                        nodeId = beacon.nodeId.value,
+                        displayName = beacon.nodeId.toString(),
+                        statusFlags = beacon.statusFlags,
+                        batteryPct = beacon.batteryPct,
+                        pendingCount = beacon.pendingCount,
+                        gattPeerCount = beacon.gattPeerCount,
+                        defaultTtl = beacon.defaultTtl,
+                        nodeSeq = beacon.nodeSeq,
+                        rssi = rssi,
+                        isSelf = false,
+                        firstSeenAt = now,
+                        lastSeenAt = now,
+                    ),
+                )
+                onNodeDiscovered(beacon.nodeId)
+            } else {
+                nodeDao.upsert(
+                    existing.copy(
+                        statusFlags = beacon.statusFlags,
+                        batteryPct = beacon.batteryPct,
+                        pendingCount = beacon.pendingCount,
+                        gattPeerCount = beacon.gattPeerCount,
+                        defaultTtl = beacon.defaultTtl,
+                        nodeSeq = beacon.nodeSeq,
+                        rssi = rssi,
+                        lastSeenAt = now,
+                    ),
+                )
+            }
+            // Selalu terapkan beacon terbaru supaya statusFlags konsisten dan
+            // node yang baru ditemukan tetap menandai dirinya MESH_ACTIVE.
+            relayEngine.applyBeacon(
+                nodeId = beacon.nodeId,
+                statusFlags = beacon.statusFlags,
+                batteryPct = beacon.batteryPct,
+                pendingCount = beacon.pendingCount,
+                gattPeerCount = beacon.gattPeerCount,
+                defaultTtl = beacon.defaultTtl,
+                nodeSeq = beacon.nodeSeq,
             )
-            onNodeDiscovered(beacon.nodeId)
-        } else {
-            nodeDao.upsert(
-                existing.copy(
-                    statusFlags = beacon.statusFlags,
-                    batteryPct = beacon.batteryPct,
-                    pendingCount = beacon.pendingCount,
-                    gattPeerCount = beacon.gattPeerCount,
-                    defaultTtl = beacon.defaultTtl,
-                    nodeSeq = beacon.nodeSeq,
-                    rssi = rssi,
-                    lastSeenAt = now,
-                ),
-            )
+            refreshCounts()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            Log.e(TAG, "Gagal memproses beacon frame: ${e.message}", e)
         }
-        // Selalu terapkan beacon terbaru supaya statusFlags konsisten dan
-        // node yang baru ditemukan tetap menandai dirinya MESH_ACTIVE.
-        relayEngine.applyBeacon(
-            nodeId = beacon.nodeId,
-            statusFlags = beacon.statusFlags,
-            batteryPct = beacon.batteryPct,
-            pendingCount = beacon.pendingCount,
-            gattPeerCount = beacon.gattPeerCount,
-            defaultTtl = beacon.defaultTtl,
-            nodeSeq = beacon.nodeSeq,
-        )
-        refreshCounts()
     }
 
     private suspend fun handleFrame(frame: MeshFrame, rssi: Int) {
-        when (val decision = relayEngine.onFrame(frame, Peer.ADVERTISING, rssi)) {
-            is RelayDecision.Relayed -> route(decision.frames, frame.destination)
-            is RelayDecision.Ack -> scheduler.enqueueUrgent(decision.frame)
-            else -> Unit
+        try {
+            when (val decision = relayEngine.onFrame(frame, Peer.ADVERTISING, rssi)) {
+                is RelayDecision.Relayed -> route(decision.frames, frame.destination)
+                is RelayDecision.Ack -> scheduler.enqueueUrgent(decision.frame)
+                else -> Unit
+            }
+            refreshCounts()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            Log.e(TAG, "Gagal memproses frame: ${e.message}", e)
         }
-        refreshCounts()
     }
 
     /**
@@ -498,9 +520,19 @@ suspend fun submitSos(
 
     private suspend fun pruneLoop() {
         while (currentCoroutineContext().isActive) {
-            delay(MeshConfig.PRUNE_INTERVAL_MS)
-            relayEngine.pruneStale()
+            try {
+                delay(MeshConfig.PRUNE_INTERVAL_MS)
+                relayEngine.pruneStale()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                Log.e(TAG, "Gagal pada iterasi pruneLoop: ${e.message}", e)
+            }
         }
+    }
+
+    companion object {
+        private const val TAG = "MeshManager"
     }
 }
 

@@ -1,9 +1,11 @@
 package com.resqmesh.ui.home
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.resqmesh.core.MeshConfig
+import com.resqmesh.crash.CrashReporter
 import com.resqmesh.data.location.LocationResult
 import com.resqmesh.data.location.LocationSource
 import com.resqmesh.domain.MeshRepository
@@ -18,6 +20,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.io.File
 
 enum class LocationNote {
     /** Fix dipakai, koordinat presisi siap dikirim. */
@@ -59,6 +62,9 @@ data class HomeUiState(
     val isSosDialogVisible: Boolean = false,
     val error: String? = null,
     val sos: SosComposer = SosComposer(),
+    val isLocationDisabledOnLegacy: Boolean = false,
+    val hasCrashReport: Boolean = false,
+    val crashFile: File? = null,
 ) {
     val locationAvailable: Boolean get() = sos.fix != null
 }
@@ -74,6 +80,8 @@ class HomeViewModel(
     private val error = MutableStateFlow<String?>(null)
     private val sos = MutableStateFlow(SosComposer())
     private val isResponderState = MutableStateFlow(repository.isResponder())
+    private val hasCrashReport = MutableStateFlow(false)
+    private val crashFile = MutableStateFlow<File?>(null)
 
     private val header = combine(
         repository.observeSelf(),
@@ -85,7 +93,17 @@ class HomeViewModel(
     }
 
     val uiState: StateFlow<HomeUiState> =
-        combine(header, ttl, sosDialog, error, sos) { headerTuple, ttlValue, dialog, errorValue, composer ->
+        combine(header, ttl, sosDialog, error, sos, hasCrashReport, crashFile) { flows ->
+            @Suppress("UNCHECKED_CAST")
+            val headerTuple = flows[0] as Tuple4<Node?, MeshState, Int, Boolean>
+            val ttlValue = flows[1] as Int
+            val dialog = flows[2] as Boolean
+            val errorValue = flows[3] as String?
+            val composer = flows[4] as SosComposer
+            val crashAvailable = flows[5] as Boolean
+            val crashFileObj = flows[6] as File?
+
+            val isLocationDisabledOnLegacy = android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S && !locationSource.isProviderEnabled()
             HomeUiState(
                 self = headerTuple.self,
                 neighborCount = headerTuple.mesh.neighborCount,
@@ -97,12 +115,32 @@ class HomeViewModel(
                 isSosDialogVisible = dialog,
                 error = errorValue,
                 sos = composer,
+                isLocationDisabledOnLegacy = isLocationDisabledOnLegacy,
+                hasCrashReport = crashAvailable,
+                crashFile = crashFileObj,
             )
         }.stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5_000),
             initialValue = HomeUiState(),
         )
+
+    fun checkForCrashReports(context: Context) {
+        val files = CrashReporter.listCrashFiles(context)
+        if (files.isNotEmpty()) {
+            crashFile.value = files.first()
+            hasCrashReport.value = true
+        } else {
+            hasCrashReport.value = false
+            crashFile.value = null
+        }
+    }
+
+    fun clearCrashReports(context: Context) {
+        CrashReporter.clearCrashFiles(context)
+        hasCrashReport.value = false
+        crashFile.value = null
+    }
 
     fun toggleResponderMode() {
         val next = !isResponderState.value

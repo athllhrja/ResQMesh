@@ -32,7 +32,9 @@ object MeshPermissions {
             Manifest.permission.BLUETOOTH_CONNECT,
         )
     } else {
-        emptyArray()
+        arrayOf(
+            Manifest.permission.ACCESS_FINE_LOCATION,
+        )
     }
 
     private val NOTIFICATION = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -66,7 +68,7 @@ object MeshPermissions {
 
     /** Izin yang belum terpenuhi, untuk langsung diminta dari UI. */
     fun missing(context: Context): List<String> =
-        (BLUETOOTH + NOTIFICATION + LOCATION).filterNot { granted(context, it) }
+        (BLUETOOTH + NOTIFICATION + LOCATION).distinct().filterNot { granted(context, it) }
 
     fun missingForService(context: Context): List<String> =
         (BLUETOOTH + NOTIFICATION).filterNot { granted(context, it) }

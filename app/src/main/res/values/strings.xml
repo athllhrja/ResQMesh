@@ -20,6 +20,7 @@
     <string name="home_stopped">Berhenti</string>
     <string name="home_start_mesh">Mulai Mesh</string>
     <string name="home_stop_mesh">Hentikan Mesh</string>
+    <string name="home_location_disabled_warning">Layanan lokasi (GPS) dimatikan. Pindaian BLE mungkin terbatas di Android 11 ke bawah. Nyalakan GPS di pengaturan.</string>
 
     <string name="home_mode_label">Mode Node</string>
     <string name="home_mode_warga">Warga</string>
@@ -36,6 +37,14 @@
     <string name="experiment_stop_button">Hentikan Eksperimen</string>
     <string name="experiment_files_title">Berkas Log CSV Eksperimen</string>
     <string name="experiment_no_files">Belum ada berkas CSV log eksperimen.</string>
+
+    <!-- Diagnostik & Crash -->
+    <string name="diagnostics_title">Diagnostik Sistem</string>
+    <string name="diagnostics_action_share">Bagikan Ringkasan</string>
+    <string name="crash_dialog_title">Aplikasi berhenti pada sesi sebelumnya</string>
+    <string name="crash_dialog_message">Terdeteksi berkas laporan crash dari sesi sebelumnya. Anda dapat membagikan laporan ini untuk membantu analisis atau menghapusnya.</string>
+    <string name="crash_action_share">Bagikan</string>
+    <string name="crash_action_delete">Hapus</string>
 
     <!-- Notifikasi Service -->
     <string name="notification_channel_name">Layanan Mesh ResQMesh</string>

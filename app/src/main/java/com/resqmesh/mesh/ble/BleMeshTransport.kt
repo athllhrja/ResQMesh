@@ -164,19 +164,40 @@ class BleMeshTransport(
     override fun start(
         onFrame: (MeshFrame, Int) -> Unit,
         onBeacon: (ByteArray, Int) -> Unit,
-    ) {
-        if (isRunning) return
+    ): Result<Unit> {
+        if (isRunning) return Result.success(Unit)
         this.onFrameCallback = onFrame
         this.onBeaconCallback = onBeacon
 
-        val adapter = bluetoothAdapter
-        if (adapter == null || !adapter.isEnabled) {
-            Log.w(TAG, "Bluetooth mati atau tidak didukung pada perangkat ini")
-            return
-        }
+        return try {
+            val adapter = bluetoothAdapter
+            if (adapter == null || !adapter.isEnabled) {
+                Log.w(TAG, "Bluetooth mati atau tidak didukung pada perangkat ini")
+                return Result.failure(IllegalStateException("Bluetooth mati atau tidak tersedia"))
+            }
 
-        isRunning = true
-        startScanning()
+            val scanner = adapter.bluetoothLeScanner
+            if (scanner == null) {
+                Log.w(TAG, "BluetoothLeScanner tidak tersedia")
+                return Result.failure(IllegalStateException("BluetoothLeScanner tidak tersedia"))
+            }
+
+            isRunning = true
+            startScanning()
+            Result.success(Unit)
+        } catch (e: SecurityException) {
+            Log.e(TAG, "SecurityException saat memulai BleMeshTransport", e)
+            isRunning = false
+            Result.failure(e)
+        } catch (e: IllegalStateException) {
+            Log.e(TAG, "IllegalStateException saat memulai BleMeshTransport", e)
+            isRunning = false
+            Result.failure(e)
+        } catch (e: Exception) {
+            Log.e(TAG, "Gagal memulai BleMeshTransport", e)
+            isRunning = false
+            Result.failure(e)
+        }
     }
 
     @SuppressLint("MissingPermission")
@@ -295,13 +316,9 @@ class BleMeshTransport(
 
     @SuppressLint("MissingPermission")
     private fun startScanning() {
-        val adapter = bluetoothAdapter ?: return
+        val adapter = bluetoothAdapter ?: throw IllegalStateException("Bluetooth adapter null")
         scanner = adapter.bluetoothLeScanner
-        val leScanner = scanner
-        if (leScanner == null) {
-            Log.w(TAG, "BluetoothLeScanner tidak tersedia")
-            return
-        }
+        val leScanner = scanner ?: throw IllegalStateException("BluetoothLeScanner tidak tersedia")
 
         val settings = ScanSettings.Builder()
             .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
@@ -311,15 +328,15 @@ class BleMeshTransport(
             .setManufacturerData(MeshConfig.COMPANY_ID, byteArrayOf())
             .build()
 
-        runCatching {
+        try {
             leScanner.startScan(listOf(filter), settings, scanCallback)
-        }.onFailure { e ->
+        } catch (e: SecurityException) {
+            throw e
+        } catch (e: IllegalStateException) {
+            throw e
+        } catch (e: Exception) {
             Log.e(TAG, "Scan dengan filter gagal, mencoba scan tanpa filter", e)
-            runCatching {
-                leScanner.startScan(null, settings, scanCallback)
-            }.onFailure { err ->
-                Log.e(TAG, "BLE Scan gagal: ${err.message}", err)
-            }
+            leScanner.startScan(null, settings, scanCallback)
         }
     }
 

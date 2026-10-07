@@ -25,6 +25,8 @@ import com.resqmesh.ui.alerts.AlertsViewModel
 import com.resqmesh.ui.chat.ChatScreen
 import com.resqmesh.ui.chat.ChatViewModel
 import com.resqmesh.ui.components.MapLauncher
+import com.resqmesh.ui.diagnostics.DiagnosticsScreen
+import com.resqmesh.ui.diagnostics.DiagnosticsViewModel
 import com.resqmesh.ui.experiment.ExperimentScreen
 import com.resqmesh.ui.experiment.ExperimentViewModel
 import com.resqmesh.ui.history.HistoryScreen
@@ -40,6 +42,7 @@ object Routes {
     const val HISTORY = "history"
     const val ALERTS = "alerts"
     const val EXPERIMENT = "experiment"
+    const val DIAGNOSTICS = "diagnostics"
     const val CHAT = "chat/{peerId}"
 
     fun chat(peerId: NodeId) = "chat/${peerId.hex}"
@@ -76,6 +79,7 @@ fun ResQMeshNavHost(
                 onOpenHistory = { navController.navigateSingleTop(Routes.HISTORY) },
                 onOpenAlerts = { navController.navigateSingleTop(Routes.ALERTS) },
                 onOpenExperiment = { navController.navigateSingleTop(Routes.EXPERIMENT) },
+                onOpenDiagnostics = { navController.navigateSingleTop(Routes.DIAGNOSTICS) },
             )
         }
 
@@ -90,6 +94,22 @@ fun ResQMeshNavHost(
                 factory = ExperimentViewModel.factory(graph.repository, graph.experimentLogger),
             )
             ExperimentScreen(
+                viewModel = viewModel,
+                onBack = { navController.popBackStack() },
+            )
+        }
+
+        composable(
+            route = Routes.DIAGNOSTICS,
+            enterTransition = { slideInHorizontally { it } + fadeIn() },
+            exitTransition = { fadeOut() },
+            popEnterTransition = { fadeIn() },
+            popExitTransition = { slideOutHorizontally { it } + fadeOut() },
+        ) {
+            val viewModel: DiagnosticsViewModel = viewModel(
+                factory = DiagnosticsViewModel.factory(graph.repository),
+            )
+            DiagnosticsScreen(
                 viewModel = viewModel,
                 onBack = { navController.popBackStack() },
             )
