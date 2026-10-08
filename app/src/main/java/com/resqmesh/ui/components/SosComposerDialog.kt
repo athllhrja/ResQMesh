@@ -1,5 +1,8 @@
 package com.resqmesh.ui.components
 
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -18,7 +21,9 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -154,10 +159,12 @@ private fun HazardPicker(selected: Int, onToggle: (Int) -> Unit) {
 
 @Composable
 private fun LocationPreview(fix: LocationFix?, note: LocationNote, onRetry: () -> Unit) {
+    val context = LocalContext.current
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
-            containerColor = if (fix != null) {
+            containerColor = if (fix != null || note == LocationNote.SEARCHING) {
                 MaterialTheme.colorScheme.surfaceVariant
             } else {
                 MaterialTheme.colorScheme.errorContainer
@@ -188,13 +195,65 @@ private fun LocationPreview(fix: LocationFix?, note: LocationNote, onRetry: () -
                     )
                 }
 
-                else -> {
+                note == LocationNote.SEARCHING -> {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.padding(end = 4.dp),
+                            strokeWidth = 2.dp,
+                        )
+                        Text(
+                            text = stringResource(R.string.sos_location_searching),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+
+                note == LocationNote.PERMISSION_MISSING || note == LocationNote.APPROXIMATE_ONLY -> {
                     Text(
                         text = stringResource(R.string.sos_location_missing),
                         style = MaterialTheme.typography.labelLarge,
                     )
                     Text(
                         text = stringResource(note.labelRes()),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    TextButton(onClick = {
+                        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                            data = Uri.fromParts("package", context.packageName, null)
+                        }
+                        context.startActivity(intent)
+                    }) {
+                        Text(stringResource(R.string.sos_location_open_app_settings))
+                    }
+                }
+
+                note == LocationNote.PROVIDER_DISABLED -> {
+                    Text(
+                        text = stringResource(R.string.sos_location_missing),
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                    Text(
+                        text = stringResource(R.string.sos_location_note_provider),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    TextButton(onClick = {
+                        val intent = Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)
+                        context.startActivity(intent)
+                    }) {
+                        Text(stringResource(R.string.sos_location_open_gps_settings))
+                    }
+                }
+
+                else -> {
+                    Text(
+                        text = stringResource(R.string.sos_location_missing),
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                    Text(
+                        text = stringResource(R.string.sos_location_note_timeout),
                         style = MaterialTheme.typography.bodySmall,
                     )
                     TextButton(onClick = onRetry) {
@@ -209,7 +268,9 @@ private fun LocationPreview(fix: LocationFix?, note: LocationNote, onRetry: () -
 @Composable
 internal fun LocationNote.labelRes(): Int = when (this) {
     LocationNote.NONE -> R.string.sos_location_ready
+    LocationNote.SEARCHING -> R.string.sos_location_searching
     LocationNote.PERMISSION_MISSING -> R.string.sos_location_note_permission
+    LocationNote.APPROXIMATE_ONLY -> R.string.sos_location_note_approximate
     LocationNote.PROVIDER_DISABLED -> R.string.sos_location_note_provider
-    LocationNote.NO_FRESH_FIX -> R.string.sos_location_note_stale
+    LocationNote.NO_FIX_AFTER_TIMEOUT -> R.string.sos_location_note_timeout
 }

@@ -1,4 +1,4 @@
-bagaipackage com.resqmesh.ui.home
+package com.resqmesh.ui.home
 
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -28,6 +28,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -65,12 +66,19 @@ fun HomeScreen(
         viewModel.checkForCrashReports(context)
     }
 
+    DisposableEffect(Unit) {
+        viewModel.startPassiveLocationUpdates()
+        onDispose {
+            viewModel.stopPassiveLocationUpdates()
+        }
+    }
+
     val locationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions(),
     ) { permissions ->
         val granted = permissions.values.any { it }
         if (granted) {
-            viewModel.resolveLocation()
+            viewModel.resolveLocation(forceRefresh = true)
         }
     }
 
@@ -96,7 +104,7 @@ fun HomeScreen(
 
     val handleRetryLocation = {
         if (MeshPermissions.hasLocation(context)) {
-            viewModel.resolveLocation()
+            viewModel.resolveLocation(forceRefresh = true)
         } else {
             locationPermissionLauncher.launch(MeshPermissions.locationPermissions)
         }

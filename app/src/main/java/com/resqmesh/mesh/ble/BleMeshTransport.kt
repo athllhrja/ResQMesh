@@ -72,6 +72,7 @@ class BleMeshTransport(
 
     private val scanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult?) {
+            BleStats.scanCallbackCount.incrementAndGet()
             if (result == null) return
             val record = result.scanRecord ?: return
             val rssi = result.rssi
@@ -83,6 +84,7 @@ class BleMeshTransport(
 
             if (payload == null || payload.size < 2) return
 
+            BleStats.matchedFrameCount.incrementAndGet()
             processPayload(payload, rssi)
         }
 
@@ -91,6 +93,8 @@ class BleMeshTransport(
         }
 
         override fun onScanFailed(errorCode: Int) {
+            BleStats.scanFailCount.incrementAndGet()
+            BleStats.lastScanErrorCode.set(errorCode)
             Log.e(TAG, "BLE Scan gagal, error code: $errorCode")
         }
     }
@@ -102,6 +106,7 @@ class BleMeshTransport(
             val intervalMs = if (lastAdvertiseTimeMs > 0) now - lastAdvertiseTimeMs else 0
             lastAdvertiseTimeMs = now
             advertiseSuccessCount++
+            BleStats.advertiseStartSuccessCount.incrementAndGet()
             Log.d(
                 TAG,
                 "BLE Advertising Legacy sukses | Selang waktu aktual: ${intervalMs}ms | Total sukses: $advertiseSuccessCount",
@@ -110,6 +115,8 @@ class BleMeshTransport(
 
         override fun onStartFailure(errorCode: Int) {
             advertiseFailureCount++
+            BleStats.advertiseFailureCount.incrementAndGet()
+            BleStats.lastAdvertiseErrorCode.set(errorCode)
             Log.e(
                 TAG,
                 "BLE Advertising Legacy gagal [Code $errorCode: ${describeAdvertiseError(errorCode)}] | Total gagal: $advertiseFailureCount",
@@ -130,6 +137,7 @@ class BleMeshTransport(
                 val intervalMs = if (lastAdvertiseTimeMs > 0) now - lastAdvertiseTimeMs else 0
                 lastAdvertiseTimeMs = now
                 advertiseSuccessCount++
+                BleStats.advertiseStartSuccessCount.incrementAndGet()
                 Log.d(
                     TAG,
                     "BLE AdvertisingSet aktif (txPower=$txPower) | Selang waktu aktual: ${intervalMs}ms | Total sukses: $advertiseSuccessCount",
@@ -137,6 +145,8 @@ class BleMeshTransport(
             } else {
                 activeAdvertisingSet = null
                 advertiseFailureCount++
+                BleStats.advertiseFailureCount.incrementAndGet()
+                BleStats.lastAdvertiseErrorCode.set(status)
                 Log.e(
                     TAG,
                     "BLE AdvertisingSet gagal dimulai [Status $status] | Total gagal: $advertiseFailureCount",
@@ -150,11 +160,14 @@ class BleMeshTransport(
                 val intervalMs = if (lastAdvertiseTimeMs > 0) now - lastAdvertiseTimeMs else 0
                 lastAdvertiseTimeMs = now
                 advertiseSuccessCount++
+                BleStats.advertiseStartSuccessCount.incrementAndGet()
                 Log.d(
                     TAG,
                     "BLE AdvertisingSet payload berhasil diperbarui tanpa stop/start | Selang waktu aktual: ${intervalMs}ms | Total sukses: $advertiseSuccessCount",
                 )
             } else {
+                BleStats.advertiseFailureCount.incrementAndGet()
+                BleStats.lastAdvertiseErrorCode.set(status)
                 Log.e(TAG, "BLE AdvertisingSet gagal memperbarui payload [Status $status]")
             }
         }
@@ -173,29 +186,38 @@ class BleMeshTransport(
             val adapter = bluetoothAdapter
             if (adapter == null || !adapter.isEnabled) {
                 Log.w(TAG, "Bluetooth mati atau tidak didukung pada perangkat ini")
-                return Result.failure(IllegalStateException("Bluetooth mati atau tidak tersedia"))
+                val err = "Bluetooth mati atau tidak tersedia"
+                BleStats.bluetoothStartResult = err
+                return Result.failure(IllegalStateException(err))
             }
 
             val scanner = adapter.bluetoothLeScanner
             if (scanner == null) {
                 Log.w(TAG, "BluetoothLeScanner tidak tersedia")
-                return Result.failure(IllegalStateException("BluetoothLeScanner tidak tersedia"))
+                val err = "BluetoothLeScanner tidak tersedia"
+                BleStats.bluetoothStartResult = err
+                return Result.failure(IllegalStateException(err))
             }
 
             isRunning = true
             startScanning()
+            BleStats.bluetoothStartResult = "Sukses"
+            BleStats.advertiseMode = if (MeshConfig.USE_BLE_ADVERTISING_SET) "AdvertisingSet (API 26+)" else "Legacy"
             Result.success(Unit)
         } catch (e: SecurityException) {
             Log.e(TAG, "SecurityException saat memulai BleMeshTransport", e)
             isRunning = false
+            BleStats.bluetoothStartResult = e.message ?: "SecurityException"
             Result.failure(e)
         } catch (e: IllegalStateException) {
             Log.e(TAG, "IllegalStateException saat memulai BleMeshTransport", e)
             isRunning = false
+            BleStats.bluetoothStartResult = e.message ?: "IllegalStateException"
             Result.failure(e)
         } catch (e: Exception) {
             Log.e(TAG, "Gagal memulai BleMeshTransport", e)
             isRunning = false
+            BleStats.bluetoothStartResult = e.message ?: "Exception"
             Result.failure(e)
         }
     }
@@ -360,18 +382,29 @@ class BleMeshTransport(
     }
 
     private fun processPayload(payload: ByteArray, rssi: Int) {
-        val frameType = payload.getOrNull(1)?.let { FrameType.fromCode(it.toInt() and 0xFF) } ?: return
+        val frameType = payload.getOrNull(1)?.let { FrameType.fromCode(it.toInt() and 0xFF) } ?: FrameType.UNKNOWN
         when (frameType) {
             FrameType.BEACON -> {
-                onBeaconCallback?.invoke(payload, rssi)
+                val beacon = runCatching { codec.decodeBeacon(payload) }.getOrNull()
+                if (beacon != null) {
+                    BleStats.lastBeaconReceivedAtMs = System.currentTimeMillis()
+                    BleStats.lastBeaconRssi = rssi
+                    onBeaconCallback?.invoke(payload, rssi)
+                } else {
+                    BleStats.parseFailureCount.incrementAndGet()
+                }
             }
             FrameType.MSG -> {
                 val frame = runCatching { codec.decode(payload) }.getOrNull()
                 if (frame != null) {
                     onFrameCallback?.invoke(frame, rssi)
+                } else {
+                    BleStats.parseFailureCount.incrementAndGet()
                 }
             }
-            FrameType.UNKNOWN -> Unit
+            FrameType.UNKNOWN -> {
+                BleStats.parseFailureCount.incrementAndGet()
+            }
         }
     }
 

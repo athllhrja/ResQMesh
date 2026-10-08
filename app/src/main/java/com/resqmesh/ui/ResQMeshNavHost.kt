@@ -107,7 +107,7 @@ fun ResQMeshNavHost(
             popExitTransition = { slideOutHorizontally { it } + fadeOut() },
         ) {
             val viewModel: DiagnosticsViewModel = viewModel(
-                factory = DiagnosticsViewModel.factory(graph.repository),
+                factory = DiagnosticsViewModel.factory(graph.repository, graph.locationSource),
             )
             DiagnosticsScreen(
                 viewModel = viewModel,

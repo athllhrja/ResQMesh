@@ -23,20 +23,12 @@ import kotlinx.coroutines.launch
 import java.io.File
 
 enum class LocationNote {
-    /** Fix dipakai, koordinat presisi siap dikirim. */
     NONE,
-
-    /** Izin lokasi belum diberikan. SOS tetap bisa dikirim tanpa pin. */
+    SEARCHING,
     PERMISSION_MISSING,
-
-    /** GPS dimatikan di pengaturan perangkat. */
+    APPROXIMATE_ONLY,
     PROVIDER_DISABLED,
-
-    /**
-     * Ada izin tapi tidak ada fix yang cukup segar. Biasanya terjadi setelah lama
-     * tidak memakai GPS, yang butuh beberapa detik untuk fix pertama.
-     */
-    NO_FRESH_FIX,
+    NO_FIX_AFTER_TIMEOUT,
 }
 
 /** Isi dialog SOS. */
@@ -125,6 +117,21 @@ class HomeViewModel(
             initialValue = HomeUiState(),
         )
 
+    fun startPassiveLocationUpdates() {
+        locationSource.startPassiveLocationUpdates { fix ->
+            sos.update { it.copy(fix = fix, note = LocationNote.NONE) }
+        }
+    }
+
+    fun stopPassiveLocationUpdates() {
+        locationSource.stopPassiveLocationUpdates()
+    }
+
+    override fun onCleared() {
+        stopPassiveLocationUpdates()
+        super.onCleared()
+    }
+
     fun checkForCrashReports(context: Context) {
         val files = CrashReporter.listCrashFiles(context)
         if (files.isNotEmpty()) {
@@ -154,7 +161,7 @@ class HomeViewModel(
 
     fun showSosDialog() {
         sosDialog.value = true
-        resolveLocation()
+        resolveLocation(forceRefresh = true)
     }
 
     fun dismissSosDialog() {
@@ -178,20 +185,23 @@ class HomeViewModel(
         sos.update { it.copy(text = text) }
     }
 
-    /** Minta ulang lokasi, misalnya setelah operator menyalakan GPS. */
-    fun resolveLocation() {
-        if (sos.value.isResolvingLocation) return
-        sos.update { it.copy(isResolvingLocation = true) }
+    /** Minta aktif lokasi baru dengan [forceRefresh] = true. */
+    fun resolveLocation(forceRefresh: Boolean = false) {
+        if (sos.value.isResolvingLocation && !forceRefresh) return
+        sos.update { it.copy(isResolvingLocation = true, note = LocationNote.SEARCHING) }
         viewModelScope.launch {
-            val note = when (val result = locationSource.currentFix(readBattery())) {
+            val note = when (val result = locationSource.currentFix(readBattery(), forceRefresh = forceRefresh)) {
                 is LocationResult.Ready -> {
                     sos.update { it.copy(fix = result.fix, note = LocationNote.NONE, isResolvingLocation = false) }
                     return@launch
                 }
 
+                LocationResult.Searching -> LocationNote.SEARCHING
                 LocationResult.PermissionMissing -> LocationNote.PERMISSION_MISSING
+                LocationResult.ApproximateOnly -> LocationNote.APPROXIMATE_ONLY
                 LocationResult.ProviderDisabled -> LocationNote.PROVIDER_DISABLED
-                LocationResult.NoRecentFix -> LocationNote.NO_FRESH_FIX
+                LocationResult.NoRecentFix,
+                LocationResult.NoFixAfterTimeout -> LocationNote.NO_FIX_AFTER_TIMEOUT
             }
             sos.update { it.copy(fix = null, note = note, isResolvingLocation = false) }
         }

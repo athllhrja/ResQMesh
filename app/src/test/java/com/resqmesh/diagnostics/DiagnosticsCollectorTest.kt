@@ -22,8 +22,15 @@ class DiagnosticsCollectorTest {
             extendedAdvertisingSupported = true,
             hasBluetoothPermissions = true,
             hasLocationPermissions = true,
+            hasPreciseLocationPermissions = true,
+            hasApproximateLocationPermissions = true,
             hasNotificationPermissions = true,
             isLocationProviderEnabled = true,
+            isGpsProviderEnabled = true,
+            isNetworkProviderEnabled = true,
+            lastGpsFixAgeSeconds = 15L,
+            lastNetworkFixAgeSeconds = 30L,
+            lastLocationSearchResult = "Sukses (GPS Aktif)",
             isIgnoringBatteryOptimizations = true,
             isMeshServiceRunning = true,
             meshPhase = "ACTIVE",
@@ -38,6 +45,9 @@ class DiagnosticsCollectorTest {
         assertTrue(text.contains("Perangkat       : Google Google Pixel 8"))
         assertTrue(text.contains("Bluetooth Didukung        : Ya"))
         assertTrue(text.contains("Izin Bluetooth / BLE      : Diberikan"))
+        assertTrue(text.contains("Izin Lokasi Presisi       : Diberikan"))
+        assertTrue(text.contains("GPS Provider              : Aktif (Last Fix: 15s lalu)"))
+        assertTrue(text.contains("Hasil Pencarian Terakhir  : Sukses (GPS Aktif)"))
         assertTrue(text.contains("MeshService Berjalan      : Ya"))
         assertTrue(text.contains("Fase Mesh                 : ACTIVE"))
         assertTrue(text.contains("Last Error                : -"))

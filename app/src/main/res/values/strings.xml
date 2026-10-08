@@ -41,6 +41,12 @@
     <!-- Diagnostik & Crash -->
     <string name="diagnostics_title">Diagnostik Sistem</string>
     <string name="diagnostics_action_share">Bagikan Ringkasan</string>
+    <string name="diagnostics_ble_section">Statistik BLE (sejak mesh dimulai)</string>
+    <string name="diagnostics_reset_stats">Reset Statistik BLE</string>
+    <string name="diagnostics_start_test">Tes BLE 30 Detik</string>
+    <string name="diagnostics_testing_ble">Menguji BLE… (%1$ds)</string>
+    <string name="diagnostics_test_result_title">Tafsiran Hasil Tes BLE 30 Detik</string>
+
     <string name="crash_dialog_title">Aplikasi berhenti pada sesi sebelumnya</string>
     <string name="crash_dialog_message">Terdeteksi berkas laporan crash dari sesi sebelumnya. Anda dapat membagikan laporan ini untuk membantu analisis atau menghapusnya.</string>
     <string name="crash_action_share">Bagikan</string>
@@ -91,9 +97,13 @@
     <string name="sos_location_ready">Lokasi terkunci, koordinat akan dikirim.</string>
     <string name="sos_location_missing">Tanpa koordinat.</string>
     <string name="sos_location_accuracy">Akurasi ±%1$d m · fix %2$d detik lalu</string>
-    <string name="sos_location_note_permission">Izin lokasi belum diberikan. Darurat tetap terkirim tanpa pin.</string>
-    <string name="sos_location_note_provider">GPS dimatikan. Nyalakan di pengaturan lalu coba lagi.</string>
-    <string name="sos_location_note_stale">Belum ada lokasi yang cukup segar. Tunggu sebentar di bawah langit terbuka.</string>
+    <string name="sos_location_searching">Mencari lokasi… (biasanya 10–60 detik, lebih cepat di luar ruangan)</string>
+    <string name="sos_location_note_permission">Izin lokasi presisi dibutuhkan untuk menandai titik darurat.</string>
+    <string name="sos_location_note_approximate">Hanya izin perkiraan yang diberikan. Aktifkan izin \'Presisi\' agar koordinat SOS dapat dikirim.</string>
+    <string name="sos_location_note_provider">Layanan lokasi (GPS) dimatikan di pengaturan.</string>
+    <string name="sos_location_note_timeout">Belum dapat lokasi. Keluar ruangan atau dekat jendela, lalu coba lagi. SOS tetap bisa dikirim tanpa koordinat.</string>
+    <string name="sos_location_open_app_settings">Buka Pengaturan Izin</string>
+    <string name="sos_location_open_gps_settings">Nyalakan GPS</string>
     <string name="sos_location_retry">Coba lagi</string>
 
     <!-- Kartu insiden -->

@@ -7,6 +7,10 @@ import android.content.pm.PackageManager
 import android.location.LocationManager
 import android.os.Build
 import android.os.PowerManager
+import androidx.core.content.ContextCompat
+import com.resqmesh.data.location.LocationSource
+import com.resqmesh.mesh.ble.BleStats
+import com.resqmesh.mesh.ble.BleStatsSnapshot
 import com.resqmesh.ui.MeshPermissions
 
 data class DiagnosticsInfo(
@@ -26,16 +30,28 @@ data class DiagnosticsInfo(
 
     val hasBluetoothPermissions: Boolean,
     val hasLocationPermissions: Boolean,
+    val hasPreciseLocationPermissions: Boolean = false,
+    val hasApproximateLocationPermissions: Boolean = false,
     val hasNotificationPermissions: Boolean,
 
     val isLocationProviderEnabled: Boolean,
+    val isGpsProviderEnabled: Boolean = false,
+    val isNetworkProviderEnabled: Boolean = false,
+    val lastGpsFixAgeSeconds: Long? = null,
+    val lastNetworkFixAgeSeconds: Long? = null,
+    val lastLocationSearchResult: String = "Belum dicari",
+
     val isIgnoringBatteryOptimizations: Boolean,
     val isMeshServiceRunning: Boolean,
 
     val meshPhase: String,
     val meshLastError: String?,
+    val bleStats: BleStatsSnapshot = BleStatsSnapshot(),
 ) {
     fun toFormattedText(): String {
+        val lastGpsStr = if (lastGpsFixAgeSeconds != null) "${lastGpsFixAgeSeconds}s lalu" else "Belum ada"
+        val lastNetStr = if (lastNetworkFixAgeSeconds != null) "${lastNetworkFixAgeSeconds}s lalu" else "Belum ada"
+
         return """
             === DIAGNOSTIK RESQMESH ===
             Application ID  : $applicationId
@@ -51,17 +67,24 @@ data class DiagnosticsInfo(
 
             --- Status Izin ---
             Izin Bluetooth / BLE      : ${if (hasBluetoothPermissions) "Diberikan" else "Ditolak"}
-            Izin Lokasi               : ${if (hasLocationPermissions) "Diberikan" else "Ditolak"}
+            Izin Lokasi Presisi       : ${if (hasPreciseLocationPermissions) "Diberikan" else "Ditolak"}
+            Izin Lokasi Perkiraan     : ${if (hasApproximateLocationPermissions) "Diberikan" else "Ditolak"}
             Izin Notifikasi           : ${if (hasNotificationPermissions) "Diberikan" else "Ditolak"}
 
+            --- Layanan Lokasi ---
+            GPS Provider              : ${if (isGpsProviderEnabled) "Aktif" else "Mati"} (Last Fix: $lastGpsStr)
+            Network Provider          : ${if (isNetworkProviderEnabled) "Aktif" else "Mati"} (Last Fix: $lastNetStr)
+            Hasil Pencarian Terakhir  : $lastLocationSearchResult
+
             --- Layanan & Sistem ---
-            Layanan Lokasi (GPS)      : ${if (isLocationProviderEnabled) "Aktif" else "Mati"}
             Abaikan Optimasi Baterai  : ${if (isIgnoringBatteryOptimizations) "Ya" else "Tidak"}
             MeshService Berjalan      : ${if (isMeshServiceRunning) "Ya" else "Tidak"}
 
             --- Status Mesh ---
             Fase Mesh                 : $meshPhase
             Last Error                : ${meshLastError ?: "-"}
+
+            ${bleStats.toFormattedText()}
         """.trimIndent()
     }
 }
@@ -70,6 +93,7 @@ object DiagnosticsCollector {
 
     fun collect(
         context: Context,
+        locationSource: LocationSource? = null,
         meshPhase: String = "UNKNOWN",
         meshLastError: String? = null,
         isMeshServiceRunning: Boolean = false,
@@ -104,22 +128,28 @@ object DiagnosticsCollector {
 
         val hasBtPerm = runCatching { MeshPermissions.hasBluetooth(context) }.getOrDefault(false)
         val hasLocPerm = runCatching { MeshPermissions.hasLocation(context) }.getOrDefault(false)
+        val hasPreciseLocPerm = runCatching { MeshPermissions.hasPreciseLocation(context) }.getOrDefault(false)
+        val hasCoarseLocPerm = runCatching {
+            ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        }.getOrDefault(false)
         val hasNotifPerm = runCatching { MeshPermissions.hasNotification(context) }.getOrDefault(false)
 
         val lm = runCatching { context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager }.getOrNull()
-        val locEnabled = runCatching {
-            lm?.isProviderEnabled(LocationManager.GPS_PROVIDER) == true ||
-                lm?.isProviderEnabled(LocationManager.NETWORK_PROVIDER) == true
-        }.getOrDefault(false)
+        val gpsEnabled = runCatching { lm?.isProviderEnabled(LocationManager.GPS_PROVIDER) == true }.getOrDefault(false)
+        val netEnabled = runCatching { lm?.isProviderEnabled(LocationManager.NETWORK_PROVIDER) == true }.getOrDefault(false)
+        val locEnabled = gpsEnabled || netEnabled
+
+        val now = System.currentTimeMillis()
+        val gpsFixAge = locationSource?.lastGpsFixTimeMs?.let { if (it > 0) (now - it) / 1000L else null }
+        val netFixAge = locationSource?.lastNetworkFixTimeMs?.let { if (it > 0) (now - it) / 1000L else null }
+        val lastSearch = locationSource?.lastSearchResult ?: "Belum dicari"
 
         val powerManager = runCatching { context.getSystemService(Context.POWER_SERVICE) as? PowerManager }.getOrNull()
         val ignoringBattery = runCatching {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                powerManager?.isIgnoringBatteryOptimizations(context.packageName) == true
-            } else {
-                true
-            }
+            powerManager?.isIgnoringBatteryOptimizations(context.packageName) == true
         }.getOrDefault(false)
+
+        val bleStatsSnapshot = runCatching { BleStats.snapshot() }.getOrDefault(BleStatsSnapshot())
 
         return DiagnosticsInfo(
             brand = Build.BRAND ?: "Unknown",
@@ -136,12 +166,20 @@ object DiagnosticsCollector {
             extendedAdvertisingSupported = extAdvSupported,
             hasBluetoothPermissions = hasBtPerm,
             hasLocationPermissions = hasLocPerm,
+            hasPreciseLocationPermissions = hasPreciseLocPerm,
+            hasApproximateLocationPermissions = hasCoarseLocPerm,
             hasNotificationPermissions = hasNotifPerm,
             isLocationProviderEnabled = locEnabled,
+            isGpsProviderEnabled = gpsEnabled,
+            isNetworkProviderEnabled = netEnabled,
+            lastGpsFixAgeSeconds = gpsFixAge,
+            lastNetworkFixAgeSeconds = netFixAge,
+            lastLocationSearchResult = lastSearch,
             isIgnoringBatteryOptimizations = ignoringBattery,
             isMeshServiceRunning = isMeshServiceRunning,
             meshPhase = meshPhase,
             meshLastError = meshLastError,
+            bleStats = bleStatsSnapshot,
         )
     }
 
