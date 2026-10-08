@@ -38,12 +38,16 @@ android {
                 storePassword = props.getProperty("storePassword")
                 keyAlias = props.getProperty("keyAlias")
                 keyPassword = props.getProperty("keyPassword")
+                enableV1Signing = true
+                enableV2Signing = true
             } else {
                 val debugConfig = getByName("debug")
                 storeFile = debugConfig.storeFile
                 storePassword = debugConfig.storePassword
                 keyAlias = debugConfig.keyAlias
                 keyPassword = debugConfig.keyPassword
+                enableV1Signing = true
+                enableV2Signing = true
             }
         }
     }
