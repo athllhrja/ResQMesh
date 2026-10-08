@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationManager
+import android.os.Bundle
 import android.os.CancellationSignal
 import androidx.core.content.ContextCompat
 import androidx.core.location.LocationManagerCompat
@@ -59,17 +60,19 @@ class DefaultLocationManagerFacade(
     private val context: Context,
 ) : LocationManagerFacade {
     private val manager =
-        context.applicationContext.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+        runCatching { context.applicationContext.getSystemService(Context.LOCATION_SERVICE) as? LocationManager }.getOrNull()
 
-    private val executor = ContextCompat.getMainExecutor(context.applicationContext)
+    private val executor = runCatching { ContextCompat.getMainExecutor(context.applicationContext) }.getOrNull()
 
-    override fun hasFinePermission(): Boolean =
+    override fun hasFinePermission(): Boolean = runCatching {
         ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
             PackageManager.PERMISSION_GRANTED
+    }.getOrDefault(false)
 
-    override fun hasCoarsePermission(): Boolean =
+    override fun hasCoarsePermission(): Boolean = runCatching {
         ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) ==
             PackageManager.PERMISSION_GRANTED
+    }.getOrDefault(false)
 
     override fun isProviderEnabled(provider: String): Boolean {
         val lm = manager ?: return false
@@ -86,18 +89,19 @@ class DefaultLocationManagerFacade(
     @SuppressLint("MissingPermission")
     override suspend fun getCurrentLocation(provider: String, timeoutMs: Long): LocationData? {
         val lm = manager ?: return null
+        val exec = executor ?: return null
         return withTimeoutOrNull(timeoutMs) {
             suspendCancellableCoroutine { continuation ->
                 val signal = CancellationSignal()
                 continuation.invokeOnCancellation {
-                    signal.cancel()
+                    runCatching { signal.cancel() }
                 }
                 runCatching {
                     LocationManagerCompat.getCurrentLocation(
                         lm,
                         provider,
                         signal,
-                        executor,
+                        exec,
                     ) { location ->
                         if (continuation.isActive) {
                             continuation.resume(location?.toData())
@@ -120,9 +124,19 @@ class DefaultLocationManagerFacade(
         onLocationChanged: (LocationData) -> Unit,
     ): LocationListenerToken? {
         val lm = manager ?: return null
-        val listener = android.location.LocationListener { location ->
-            onLocationChanged(location.toData())
+        val listener = object : android.location.LocationListener {
+            override fun onLocationChanged(location: Location) {
+                runCatching { onLocationChanged(location.toData()) }
+            }
+
+            @Deprecated("Deprecated in Java")
+            override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
+
+            override fun onProviderEnabled(provider: String) {}
+
+            override fun onProviderDisabled(provider: String) {}
         }
+
         val registered = runCatching {
             lm.requestLocationUpdates(provider, intervalMs, minDistanceMeters, listener, android.os.Looper.getMainLooper())
             true
@@ -168,17 +182,18 @@ class LocationSource(
 
     private val passiveTokens = mutableListOf<LocationListenerToken>()
 
-    fun hasPermission(): Boolean = facade.hasFinePermission() || facade.hasCoarsePermission()
+    fun hasPermission(): Boolean = runCatching { facade.hasFinePermission() || facade.hasCoarsePermission() }.getOrDefault(false)
 
-    fun hasFinePermission(): Boolean = facade.hasFinePermission()
+    fun hasFinePermission(): Boolean = runCatching { facade.hasFinePermission() }.getOrDefault(false)
 
-    fun isProviderEnabled(): Boolean =
+    fun isProviderEnabled(): Boolean = runCatching {
         facade.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
             facade.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+    }.getOrDefault(false)
 
-    fun isGpsEnabled(): Boolean = facade.isProviderEnabled(LocationManager.GPS_PROVIDER)
+    fun isGpsEnabled(): Boolean = runCatching { facade.isProviderEnabled(LocationManager.GPS_PROVIDER) }.getOrDefault(false)
 
-    fun isNetworkEnabled(): Boolean = facade.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+    fun isNetworkEnabled(): Boolean = runCatching { facade.isProviderEnabled(LocationManager.NETWORK_PROVIDER) }.getOrDefault(false)
 
     /**
      * Mendapatkan lokasi. Pertama mencoba membaca `getLastKnownLocation` jika segar.
@@ -186,57 +201,62 @@ class LocationSource(
      * pencarian aktif lewat `getCurrentLocation` (timeout 20 detik).
      */
     suspend fun currentFix(batteryPct: Int?, forceRefresh: Boolean = false): LocationResult {
-        if (!hasPermission()) {
-            lastSearchResult = "Gagal: Izin tidak diberikan"
-            return LocationResult.PermissionMissing
-        }
-
-        if (!hasFinePermission()) {
-            lastSearchResult = "Gagal: Hanya izin perkiraan"
-            return LocationResult.ApproximateOnly
-        }
-
-        if (!isProviderEnabled()) {
-            lastSearchResult = "Gagal: Provider mati"
-            return LocationResult.ProviderDisabled
-        }
-
-        val now = clock.now()
-
-        // 1. Coba getLastKnownLocation bila tidak dipaksa pencarian aktif baru
-        if (!forceRefresh) {
-            val bestKnown = PREFERRED_PROVIDERS
-                .mapNotNull { provider ->
-                    val loc = facade.getLastKnownLocation(provider)
-                    if (loc != null) recordFixTime(provider, loc.timeMs)
-                    loc
-                }
-                .filter { isFresh(it, now) }
-                .minByOrNull { accuracyOf(it) }
-
-            if (bestKnown != null) {
-                lastSearchResult = "Sukses (LastKnown)"
-                return LocationResult.Ready(toFix(bestKnown, now, batteryPct))
+        return runCatching {
+            if (!hasPermission()) {
+                lastSearchResult = "Gagal: Izin tidak diberikan"
+                return@runCatching LocationResult.PermissionMissing
             }
-        }
 
-        // 2. Pencarian Aktif (20 detik) pada GPS lalu Network
-        val activeGps = facade.getCurrentLocation(LocationManager.GPS_PROVIDER, ACTIVE_SEARCH_GPS_TIMEOUT_MS)
-        if (activeGps != null) {
-            recordFixTime(LocationManager.GPS_PROVIDER, activeGps.timeMs)
-            lastSearchResult = "Sukses (GPS Aktif)"
-            return LocationResult.Ready(toFix(activeGps, clock.now(), batteryPct))
-        }
+            if (!hasFinePermission()) {
+                lastSearchResult = "Gagal: Hanya izin perkiraan"
+                return@runCatching LocationResult.ApproximateOnly
+            }
 
-        val activeNet = facade.getCurrentLocation(LocationManager.NETWORK_PROVIDER, ACTIVE_SEARCH_NET_TIMEOUT_MS)
-        if (activeNet != null) {
-            recordFixTime(LocationManager.NETWORK_PROVIDER, activeNet.timeMs)
-            lastSearchResult = "Sukses (Network Aktif)"
-            return LocationResult.Ready(toFix(activeNet, clock.now(), batteryPct))
-        }
+            if (!isProviderEnabled()) {
+                lastSearchResult = "Gagal: Provider mati"
+                return@runCatching LocationResult.ProviderDisabled
+            }
 
-        lastSearchResult = "Waktu habis (Timeout 20s)"
-        return LocationResult.NoFixAfterTimeout
+            val now = clock.now()
+
+            // 1. Coba getLastKnownLocation bila tidak dipaksa pencarian aktif baru
+            if (!forceRefresh) {
+                val bestKnown = PREFERRED_PROVIDERS
+                    .mapNotNull { provider ->
+                        val loc = facade.getLastKnownLocation(provider)
+                        if (loc != null) recordFixTime(provider, loc.timeMs)
+                        loc
+                    }
+                    .filter { isFresh(it, now) }
+                    .minByOrNull { accuracyOf(it) }
+
+                if (bestKnown != null) {
+                    lastSearchResult = "Sukses (LastKnown)"
+                    return@runCatching LocationResult.Ready(toFix(bestKnown, now, batteryPct))
+                }
+            }
+
+            // 2. Pencarian Aktif (20 detik) pada GPS lalu Network
+            val activeGps = facade.getCurrentLocation(LocationManager.GPS_PROVIDER, ACTIVE_SEARCH_GPS_TIMEOUT_MS)
+            if (activeGps != null) {
+                recordFixTime(LocationManager.GPS_PROVIDER, activeGps.timeMs)
+                lastSearchResult = "Sukses (GPS Aktif)"
+                return@runCatching LocationResult.Ready(toFix(activeGps, clock.now(), batteryPct))
+            }
+
+            val activeNet = facade.getCurrentLocation(LocationManager.NETWORK_PROVIDER, ACTIVE_SEARCH_NET_TIMEOUT_MS)
+            if (activeNet != null) {
+                recordFixTime(LocationManager.NETWORK_PROVIDER, activeNet.timeMs)
+                lastSearchResult = "Sukses (Network Aktif)"
+                return@runCatching LocationResult.Ready(toFix(activeNet, clock.now(), batteryPct))
+            }
+
+            lastSearchResult = "Waktu habis (Timeout 20s)"
+            LocationResult.NoFixAfterTimeout
+        }.getOrElse { e ->
+            lastSearchResult = "Error: ${e.message}"
+            LocationResult.NoFixAfterTimeout
+        }
     }
 
     /** Memulai pembaruan lokasi pasif periodik saat UI terlihat. */
@@ -244,31 +264,35 @@ class LocationSource(
         intervalMs: Long = PASSIVE_INTERVAL_MS,
         onLocationReceived: (LocationFix) -> Unit,
     ) {
-        stopPassiveLocationUpdates()
-        if (!hasPermission() || !isProviderEnabled()) return
+        runCatching {
+            stopPassiveLocationUpdates()
+            if (!hasPermission() || !isProviderEnabled()) return
 
-        val callback: (LocationData) -> Unit = { loc ->
-            val now = clock.now()
-            recordFixTime(loc.provider, loc.timeMs)
-            onLocationReceived(toFix(loc, now, null))
-        }
-
-        if (isGpsEnabled()) {
-            facade.requestLocationUpdates(LocationManager.GPS_PROVIDER, intervalMs, 0f, callback)?.let {
-                passiveTokens.add(it)
+            val callback: (LocationData) -> Unit = { loc ->
+                val now = clock.now()
+                recordFixTime(loc.provider, loc.timeMs)
+                onLocationReceived(toFix(loc, now, null))
             }
-        }
-        if (isNetworkEnabled()) {
-            facade.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, intervalMs, 0f, callback)?.let {
-                passiveTokens.add(it)
+
+            if (isGpsEnabled()) {
+                facade.requestLocationUpdates(LocationManager.GPS_PROVIDER, intervalMs, 0f, callback)?.let {
+                    passiveTokens.add(it)
+                }
+            }
+            if (isNetworkEnabled()) {
+                facade.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, intervalMs, 0f, callback)?.let {
+                    passiveTokens.add(it)
+                }
             }
         }
     }
 
     /** Menghentikan pembaruan lokasi pasif agar tidak menyedot baterai. */
     fun stopPassiveLocationUpdates() {
-        passiveTokens.forEach { runCatching { it.cancel() } }
-        passiveTokens.clear()
+        runCatching {
+            passiveTokens.forEach { runCatching { it.cancel() } }
+            passiveTokens.clear()
+        }
     }
 
     private fun recordFixTime(provider: String, timeMs: Long) {

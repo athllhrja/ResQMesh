@@ -118,13 +118,17 @@ class HomeViewModel(
         )
 
     fun startPassiveLocationUpdates() {
-        locationSource.startPassiveLocationUpdates { fix ->
-            sos.update { it.copy(fix = fix, note = LocationNote.NONE) }
+        runCatching {
+            locationSource.startPassiveLocationUpdates { fix ->
+                sos.update { it.copy(fix = fix, note = LocationNote.NONE) }
+            }
         }
     }
 
     fun stopPassiveLocationUpdates() {
-        locationSource.stopPassiveLocationUpdates()
+        runCatching {
+            locationSource.stopPassiveLocationUpdates()
+        }
     }
 
     override fun onCleared() {
