@@ -112,18 +112,13 @@ class AppGraph(context: Context) {
         )
     }
 
-    val storeAndForwardQueue: StoreAndForwardQueue by lazy {
-        StoreAndForwardQueue(
-            messageDao = messageDao,
-            seenDao = seenDao,
-            meshManager = meshManager,
-            clock = clock,
-            scope = scope,
-        )
-    }
+    private class MeshComponents(
+        val manager: MeshManager,
+        val queue: StoreAndForwardQueue,
+    )
 
-    val meshManager: MeshManager by lazy {
-        MeshManager(
+    private val meshComponents: MeshComponents by lazy {
+        val manager = MeshManager(
             scope = scope,
             selfId = selfId,
             nodeDao = nodeDao,
@@ -136,10 +131,20 @@ class AppGraph(context: Context) {
             scheduler = scheduler,
             forwardingPolicy = ForwardingPolicy(peerLinks),
             logger = experimentLogger,
-        ).also { manager ->
-            manager.storeAndForwardQueue = storeAndForwardQueue
-        }
+        )
+        val queue = StoreAndForwardQueue(
+            messageDao = messageDao,
+            seenDao = seenDao,
+            meshManager = manager,
+            clock = clock,
+            scope = scope,
+        )
+        manager.storeAndForwardQueue = queue
+        MeshComponents(manager, queue)
     }
+
+    val meshManager: MeshManager get() = meshComponents.manager
+    val storeAndForwardQueue: StoreAndForwardQueue get() = meshComponents.queue
 
     val repository: MeshRepository by lazy {
         DefaultMeshRepository(

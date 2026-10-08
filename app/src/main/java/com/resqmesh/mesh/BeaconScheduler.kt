@@ -35,6 +35,7 @@ class BeaconScheduler(
     private val queue = RelayQueue()
     private var job: Job? = null
     @Volatile private var beaconIntervalMs = MeshConfig.BEACON_INTERVAL_MS
+    private var lastBeaconSentMs = 0L
 
     val queueSize: Int get() = queue.size()
 
@@ -45,6 +46,23 @@ class BeaconScheduler(
                 try {
                     val frame = queue.poll()
                     if (frame == null) {
+                        val now = System.currentTimeMillis()
+                        if (selfId != null && (now - lastBeaconSentMs >= beaconIntervalMs)) {
+                            val beaconFrame = com.resqmesh.domain.model.BeaconFrame(
+                                nodeId = selfId,
+                                statusFlags = com.resqmesh.domain.model.NodeStatusFlags.MESH_ACTIVE or com.resqmesh.domain.model.NodeStatusFlags.SCANNING,
+                                batteryPct = -1,
+                                pendingCount = 0,
+                                defaultTtl = MeshConfig.DEFAULT_TTL,
+                                gattPeerCount = 0,
+                                nodeSeq = now / 1000L,
+                            )
+                            val wire = runCatching { codec.encodeBeacon(beaconFrame) }.getOrNull()
+                            if (wire != null) {
+                                publisher.publish(wire)
+                                lastBeaconSentMs = now
+                            }
+                        }
                         delay(jitter(MeshConfig.SCHEDULER_JITTER_MS))
                         continue
                     }
